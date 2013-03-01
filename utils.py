@@ -70,47 +70,25 @@ class Utils:
         unique_name = "_".join([name, cls.timestamp_rand()])
         return unique_name
 #-------------------------------------------------------------------------------
-#def get_ram_usage(rax_nova_client):            
-#    flavor_map = {
-#            '2' : 512,
-#            '3' : 1024,
-#            '4' : 2048,
-#            '5' : 4096,
-#            '6' : 8192,
-#            '7' : 15360,
-#            '8' : 30720,
-#            }
-#    
-#    ram_usage = 0
-#    
-#    for server in rax_nova_client.servers.list():
-#        flavor_id = server.flavor['id']
-#        ram_usage += flavor_map[flavor_id]
-#        
-#    return ram_usage
-##-------------------------------------------------------------------------------
-#def has_enough_ram(rax_nova_client, ram_gb_needed):
-#    max_ram = 66560 # default rackspace max ram - 65GB
-#    
-#    tentative_total = get_ram_usage(rax_nova_client) + (ram_gb_needed * 1024)
-#    
-#    if tentative_total <= max_ram:
-#        return True
-#    
-#    return False
-##-------------------------------------------------------------------------------
-#def get_user_networks_usage(rax_nova_client):            
-#    networks = Networks.list(rax_nova_client)
-#    return len(networks) - 2  # remove 2: default RAX public & private network
-##-------------------------------------------------------------------------------
-#def has_not_hit_networks_quota(rax_nova_client, networks_needed):
-#    max_networks = 3 # default rackspace max cloud networks
-#    
-#    tentative_total = get_user_networks_usage(rax_nova_client) + networks_needed
-#    
-#    if tentative_total <= max_networks:
-#        return True
-#    
-#    return False
+    @classmethod
+    def get_usage(cls, nova_client, limit_name):            
+        total_used = 0
+        limits = nova_client.limits.get()
+        
+        for limit in limits.absolute:
+            if limit.name == limit_name:
+                total_used = limit.value
+        
+        return total_used
+#-------------------------------------------------------------------------------
+    @classmethod
+    def has_enough(cls, nova_client, limit_name, needed, max):
+        used = cls.get_usage(nova_client, limit_name)
+        
+        tentative_total = used + needed
+        
+        if tentative_total <= max:
+            return True, used
+        return False, used
 #-------------------------------------------------------------------------------
 #===============================================================================
