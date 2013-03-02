@@ -25,8 +25,8 @@ apt-get -o Dpkg::Options::="--force-confnew" --force-yes -fuy dist-upgrade
 #
 # By default this script does nothing.
 
-chmod +x /root/install_server.sh
-/root/install_server.sh > /root/install_server_status.txt 2>&1 &
+chmod +x /root/install_oc.sh
+/root/install_oc.sh > /root/install_oc_status.txt 2>&1 &
 exit 0
 EOF
 
