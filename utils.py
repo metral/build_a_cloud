@@ -1,5 +1,6 @@
 #===============================================================================
 import random
+import socket
 import subprocess
 from time import time, sleep
 #-------------------------------------------------------------------------------
@@ -46,7 +47,8 @@ class Utils:
 #-------------------------------------------------------------------------------
     @classmethod
     def print_server_status(cls, server):
-        print "\nServer Status:", server.status
+        print "\nServer Name:", server.name
+        print "Server Status:", server.status
         print "Server Progress: %s%%" % server.progress
 #-------------------------------------------------------------------------------
     @classmethod
@@ -71,24 +73,36 @@ class Utils:
         return unique_name
 #-------------------------------------------------------------------------------
     @classmethod
-    def get_usage(cls, nova_client, limit_name):            
+    def get_limit(cls, nova_client, limit_name):
         total_used = 0
         limits = nova_client.limits.get()
-        
+
         for limit in limits.absolute:
             if limit.name == limit_name:
                 total_used = limit.value
-        
+
         return total_used
 #-------------------------------------------------------------------------------
     @classmethod
     def has_enough(cls, nova_client, limit_name, needed, max):
-        used = cls.get_usage(nova_client, limit_name)
-        
+        used = cls.get_limit(nova_client, limit_name)
+
         tentative_total = used + needed
-        
+
         if tentative_total <= max:
             return True, used
         return False, used
+#-------------------------------------------------------------------------------
+    @classmethod
+    def port_is_open(cls, ip, port):
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(10)
+
+        try:
+            s.connect((ip, int(port)))
+            s.settimeout(None)
+            return True
+        except:
+            return False
 #-------------------------------------------------------------------------------
 #===============================================================================
