@@ -1,6 +1,8 @@
 #===============================================================================
 from time import time, sleep
+import httplib
 import inspect
+import json
 import random
 import socket
 import subprocess
@@ -114,5 +116,39 @@ class Utils:
         msg ="Exception - %s | %s() | Line# %s: \n\t%s" % \
             (filename, function_name, line_number, str(e))
         return msg
+#-------------------------------------------------------------------------------
+    @classmethod
+    def post_json(cls, url, path, params_json):
+        params = json.dumps(params_json)
+        headers = {"Content-Type": "application/json"}
+
+        conn = httplib.HTTPConnection(url)
+        conn.request("POST", path, params, headers)
+        res = conn.getresponse()
+
+        try:
+            json_data = json.loads(res.read())
+        except Exception,e:
+            print cls.logging(e)
+            return None
+
+        return json_data
+#-------------------------------------------------------------------------------
+    @classmethod
+    def get_json(cls, url, path):
+        params = ""
+        headers = {"Content-Type": "application/json"}
+
+        conn = httplib.HTTPConnection(url)
+        conn.request("GET", path, params, headers)
+        res = conn.getresponse()
+
+        try:
+            json_data = json.loads(res.read())
+        except Exception,e:
+            print cls.logging(e)
+            return None
+
+        return json_data
 #-------------------------------------------------------------------------------
 #===============================================================================
