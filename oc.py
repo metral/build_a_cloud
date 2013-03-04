@@ -1,7 +1,8 @@
 #-------------------------------------------------------------------------------
-import json
-import httplib
+from utils import Utils
 import collections
+import httplib
+import json
 #-------------------------------------------------------------------------------
 class OC:
     OC_API="166.78.125.17:8080"
@@ -91,8 +92,9 @@ class OC:
         try:
             if status == 200:
                 unprovisioned_nodes = cls.extract_unprovisioned(nodes)
+                chef = unprovisioned_nodes.pop()
         except Exception, e:
-            print "Error:", str(e)
+            print Utils.logging(e)
 #-------------------------------------------------------------------------------
 nodes_url, nodes_path = OC.nodes_conn()
 nodes_json_data = OC.get(nodes_url, nodes_path)

@@ -1,8 +1,10 @@
 #===============================================================================
+from time import time, sleep
+import inspect
 import random
 import socket
 import subprocess
-from time import time, sleep
+import sys
 #-------------------------------------------------------------------------------
 class Utils:
 #-------------------------------------------------------------------------------
@@ -104,5 +106,13 @@ class Utils:
             return True
         except:
             return False
+#-------------------------------------------------------------------------------
+    @classmethod
+    def logging(cls, e):
+        frame,filename,line_number,function_name,lines,index=\
+                inspect.getouterframes(inspect.currentframe())[1]
+        msg ="Exception - %s | %s() | Line# %s: \n\t%s" % \
+            (filename, function_name, line_number, str(e))
+        return msg
 #-------------------------------------------------------------------------------
 #===============================================================================
