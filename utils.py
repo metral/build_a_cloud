@@ -147,6 +147,7 @@ class Utils:
             return json_data
         except Exception,e:
             print cls.logging(e)
+            return None
 #-------------------------------------------------------------------------------
     @classmethod
     def extract_oc_object_type(cls, json_data, object_type):

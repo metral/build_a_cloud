@@ -3,73 +3,79 @@ from time import sleep
 from utils import Utils
 #-------------------------------------------------------------------------------
 ################################################################################
+class Task:
+#-------------------------------------------------------------------------------
+    @classmethod
+    def wait_for_task(cls, url, user, password, node, action):
+        tasked = False
+        state = None
+        task_id = None
+        while not tasked:
+            tasks_json = Utils.oc_api(url + "/tasks/", user, password)
+            tasks = Utils.extract_oc_object_type(tasks_json, "tasks")
+            for task in tasks:
+                if (task['node_id'] == node['id']) and (task['action'] == action):
+                    tasked = True
+                    task_id = task['id']
+                    state = task['state']
+            print "Waiting for %s to be tasked..." % action
+            sleep(3)
+        while(state != 'done'):
+            print "Waiting for %s to adventurate..." % action
+            path = "/tasks/%s" % task_id
+            updated_json = Utils.oc_api(url + path, user, password)
+            updated_task = Utils.extract_oc_object_type(updated_json, "task")
+            if updated_task:
+                state = updated_task['state']
+            sleep(10)
+################################################################################
 class Adventures:
+#-------------------------------------------------------------------------------
+    @classmethod
+    def get_adventures(cls, url, user, password):
+        # Get adventures
+        adventures_json = Utils.oc_api(url + "/adventures/", user, password)
+        adventures = Utils.extract_oc_object_type(adventures_json, "adventures")
+        return adventures
+#-------------------------------------------------------------------------------
+    @classmethod
+    def find(cls, adventure_name, adventures):
+        for adventure in adventures:
+            if adventure['name'] == adventure_name:
+                return adventure 
+        return None
+#-------------------------------------------------------------------------------
+    @classmethod
+    def execute(cls, adventure, node, url, user, password):
+        path = "/adventures/%s/execute" % adventure['id']
+        params_json = {
+                "node": node['id'],
+                }
+        result = Utils.oc_api(url + path, user, password, 
+                kwargs={'json': params_json })
+
+        if result:
+            return result
+        return None
 #-------------------------------------------------------------------------------
     @classmethod
     def provision_chef(cls, node, url, user, password):
         # Get adventures
-        adventures_json = Utils.oc_api(url + "/adventures/", user, password)
-        adventures = Utils.extract_oc_object_type(adventures_json, "adventures")
+        adventures = cls.get_adventures(url, user, password)
         
         # Execute 'install_chef_server' adventure
-        result = None
-        for adventure in adventures:
-            if adventure['name'] == "Install Chef Server":
-                path = "/adventures/%s/execute" % adventure['id']
-                params_json = {
-                        "node": node['id'],
-                        }
-                result = Utils.oc_api(url + path, user, password, 
-                        kwargs={'json': params_json })
-
-                print "result: ", result
+        adventure = cls.find("Install Chef Server", adventures)
+        result = cls.execute(adventure, node, url, user, password)
+        
         try:
             if result['status'] == 202:
                 # Monitor tasking of install_chef_server
-                tasked = False
-                state = None
-                task_id = None
-                while not tasked:
-                    tasks_json = Utils.oc_api(url + "/tasks/", user, password)
-                    tasks = Utils.extract_oc_object_type(tasks_json, "tasks")
-                    for task in tasks:
-                        if (task['node_id'] == node['id']) and (task['action'] == 'install_chef_server'):
-                            tasked = True
-                            task_id = task['id']
-                            state = task['state']
-                    print "waiting for install_chef_server to be tasked..."
-                    sleep(3)
-                while(state != 'done'):
-                    print "\nwaiting for install_chef_server to adventurate..."
-                    path = "/tasks/%s" % task_id
-                    updated_json = Utils.oc_api(url + path, user, password)
-                    updated_task = Utils.extract_oc_object_type(updated_json, "task")
-                    if updated_task:
-                        state = updated_task['state']
-                    sleep(10)
+                action = "install_chef_server"
+                Task.wait_for_task(url, user, password, node, action)
                     
                 # Monitor tasking of download_cookbooks
-                tasked = False
-                state = None
-                task_id = None
-                while not tasked:
-                    tasks_json = Utils.oc_api(url + "/tasks/", user, password)
-                    tasks = Utils.extract_oc_object_type(tasks_json, "tasks")
-                    for task in tasks:
-                        if (task['node_id'] == node['id']) and (task['action'] == 'download_cookbooks'):
-                            tasked = True
-                            task_id = task['id']
-                            state = task['state']
-                    print "waiting for download_cookbooks to be tasked..."
-                    sleep(3)
-                while(state != 'done'):
-                    print "\nwaiting for download_cookbooks to adventurate..."
-                    path = "/tasks/%s" % task_id
-                    updated_json = Utils.oc_api(url + path, user, password)
-                    updated_task = Utils.extract_oc_object_type(updated_json, "task")
-                    if updated_task:
-                        state = updated_task['state']
-                    sleep(10)
+                action = "download_cookbooks"
+                Task.wait_for_task(url, user, password, node, action)
         except Exception,e:
             print Utils.logging(e)
 #-------------------------------------------------------------------------------
@@ -133,7 +139,7 @@ PASSWORD = "fW2T5XJezsE3"
 SERVER_IPV4 = "166.78.124.234"
 URL ="https://%s:8443" % SERVER_IPV4
 
-unprovisioned_nodes = Nodes.wait_for_agents(11, URL, USER, PASSWORD)
+unprovisioned_nodes = Nodes.wait_for_agents(10, URL, USER, PASSWORD)
 
 Adventures.provision_chef(unprovisioned_nodes.pop(0), URL, USER, PASSWORD)
 
