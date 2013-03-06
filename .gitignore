@@ -3,3 +3,4 @@ partner.py
 *.pyc
 api.py
 test.py
+temp*

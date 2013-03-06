@@ -148,4 +148,19 @@ class Utils:
         except Exception,e:
             print cls.logging(e)
 #-------------------------------------------------------------------------------
+    @classmethod
+    def extract_oc_object_type(cls, json_data, object_type):
+        if json_data is None:
+            return None
+        
+        status = int(json_data['status'])
+        
+        try:
+            if status == 200:
+                extract = json_data[object_type]
+                return extract
+        except Exception,e:
+            print Utils.logging(e)
+            return None
+#-------------------------------------------------------------------------------
 #===============================================================================

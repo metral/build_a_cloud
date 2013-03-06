@@ -238,7 +238,7 @@ class CloudServers():
         network = cls.create_network(nova_client, "bac", "192.168.4.0/24")
 
         # Launch opencenter cluster
-        num_of_oc_agents = 5
+        num_of_oc_agents = 3
         cls.launch_cluster(nova_client, network, num_of_oc_agents)
 #-------------------------------------------------------------------------------
     @classmethod
