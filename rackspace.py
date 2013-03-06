@@ -3,6 +3,7 @@ import os_networksv2_python_novaclient_ext as rax_network
 from novaclient.v1_1 import client as python_novaclient
 from time import sleep
 from utils import Utils
+import sys
 #-------------------------------------------------------------------------------
 default_nics = [
         "00000000-0000-0000-0000-000000000000",     # Public
@@ -31,15 +32,9 @@ class CloudServers():
         return new_nova_client
 #-------------------------------------------------------------------------------
     @classmethod
-    def create_server(cls, nova_client, name, network_id, 
-            oc_install_fp, oc_server_ipv4):
+    def create_server(cls, nova_client, name, network_id, data):
         image = "5cebb13a-f783-4f8c-8058-c4182c724ccd"      # Ubuntu 12.04
         flavor = 6      # 8GB
-
-        oc_install_data = Utils.read_data(oc_install_fp)
-        if oc_server_ipv4:
-            oc_install_data = \
-                oc_install_data.replace("OC_SERVER_IP", oc_server_ipv4)
         
         server = nova_client.servers.create(
                 name = name,
@@ -56,7 +51,7 @@ class CloudServers():
                     "/etc/prep.sh": Utils.read_data("vm_scripts/prep.sh"),
                     "/root/upgrade.sh": \
                         Utils.read_data("vm_scripts/upgrade.sh"),
-                    "/root/install_oc.sh": oc_install_data,
+                    "/root/install_oc.sh": data,
                     }
                 )
         print "Scheduled server creation: %s | %s" % (server.id, server.name)
@@ -115,12 +110,46 @@ class CloudServers():
 #-------------------------------------------------------------------------------
     @classmethod
     def wait_for_oc_service(cls, server, oc_port):
-        ipv4 = Utils.get_ipv4(server.addresses["public"])
-        
-        while (not Utils.port_is_open(ipv4, oc_port)):
-            print "\nWaiting for OpenCenter service to be ready:", server.name
-            sleep(10)
-        print "OpenCenter Service Ready on:", server.name
+        try:
+            ipv4 = Utils.get_ipv4(server.addresses["public"])
+            
+            while (not Utils.port_is_open(ipv4, oc_port)):
+                print "\nWaiting for OpenCenter service to be up:", server.name
+                sleep(10)
+            print "OpenCenter Service Ready on:", server.name
+        except Exception,e:
+            print Utils.logging(e)
+#-------------------------------------------------------------------------------
+    @classmethod
+    def delete_server(cls, server):
+        try:
+            server.delete()
+        except Exception,e:
+            print Utils.logging(e)
+#-------------------------------------------------------------------------------
+    @classmethod
+    def update_server(cls, nova_client, server):
+        try:
+            updated_server = nova_client.servers.get(server.id)
+            return updated_server
+        except Exception,e:
+            print Utils.logging(e)
+#-------------------------------------------------------------------------------
+    @classmethod
+    def update_server_root_password(cls, updated_server, orig_server):
+        try:
+            updated_server.adminPass = orig_server.adminPass
+        except Exception,e:
+            print Utils.logging(e)
+        return updated_server
+#-------------------------------------------------------------------------------
+    @classmethod
+    def update_oc_admin_password(cls, updated_server, orig_server):
+        try:
+            updated_server.oc_server_password = orig_server.oc_server_password
+        except Exception,e:
+            pass
+        return updated_server
 #-------------------------------------------------------------------------------
     @classmethod
     def wait_for_server(cls, nova_client, server, oc_port = None):
@@ -129,10 +158,18 @@ class CloudServers():
 
         while (updated_server.status != "ACTIVE"):
             Utils.print_server_status(updated_server)
-            updated_server = nova_client.servers.get(updated_server.id)
+            updated_server = cls.update_server(nova_client, server)
+            
+            if updated_server.status == "ERROR":
+                cls.delete_server(updated_server)
+                return False
+                
             sleep(10)
-        updated_server.adminPass = server.adminPass
-
+            
+        # Set passwords
+        updated_server = cls.update_server_root_password(updated_server, server)
+        updated_server = cls.update_oc_admin_password(updated_server, server)
+        
         # Print server info
         Utils.print_server_info(updated_server)
 
@@ -147,24 +184,47 @@ class CloudServers():
 #-------------------------------------------------------------------------------
     @classmethod
     def launch_cluster(cls, nova_client, network, num_of_oc_agents):
-        # Create opencenter server
+        # Create OpenCenter Server & Prep install file
         name = Utils.generate_unique_name("bac-opencenter-server")
+        
         fp = "vm_scripts/install_oc_server.sh"
-        oc_server = cls.create_server(nova_client, name, network.id, fp, None)
+        data = Utils.read_data(fp)
+        oc_server_password = Utils.generate_password()
+        data = data.replace("PASSWORD", oc_server_password)
+
+        # Create OpenCenter Server
+        created = False
+        oc_server = None
+        oc_server_ipv4 = None
+        while not created:
+            oc_server = cls.create_server(nova_client, name, network.id, data)
+            oc_server.oc_server_password = oc_server_password
+
+            # Wait for OpenCenter server services
+            oc_server_port = 443   # OpenCenter HTTPS Server
+            created = \
+                    cls.wait_for_server(nova_client, oc_server, oc_server_port)
+            
+            if created:
+                # Get OpenCenter IP
+                oc_server = nova_client.servers.get(oc_server.id)
+                oc_server_ipv4 = Utils.get_ipv4(oc_server.addresses["public"])
 
         # Create opencenter agents
-        oc_server_port = 8080   # OpenCenter Server Service
-        if cls.wait_for_server(nova_client, oc_server, oc_server_port):
-            oc_server = nova_client.servers.get(oc_server.id)
-            oc_server_ipv4 = Utils.get_ipv4(oc_server.addresses["public"])
+        fp = "vm_scripts/install_oc_agent.sh"
+        data = Utils.read_data(fp)
+        data = data.replace("SERVER_IP", oc_server_ipv4)
+        data = data.replace("PASSWORD", oc_server_password)
 
-            fp = "vm_scripts/install_oc_agent.sh"
-
+        created = False
+        while not created:
             for i in range(0, num_of_oc_agents):
+                created = False
                 name = Utils.generate_unique_name("bac-opencenter-agent")
-                oc_agent = cls.create_server(nova_client, name, 
-                        network.id, fp, oc_server_ipv4)
-                cls.wait_for_server(nova_client, oc_agent)
+                oc_agent = \
+                        cls.create_server(nova_client, name, network.id, data)
+                created = \
+                        cls.wait_for_server(nova_client, oc_agent)
 #-------------------------------------------------------------------------------
     @classmethod
     def build_a_cloud(cls, nova_client):
@@ -175,7 +235,7 @@ class CloudServers():
         cls.check_quotas(nova_client)
 
         # Create new network
-        network = cls.create_network(nova_client, "bac", "192.168.3.0/24")
+        network = cls.create_network(nova_client, "bac", "192.168.4.0/24")
 
         # Launch opencenter cluster
         num_of_oc_agents = 3

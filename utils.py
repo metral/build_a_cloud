@@ -1,8 +1,13 @@
 #===============================================================================
+from time import time, sleep
+import base64
+import inspect
+import json
 import random
 import socket
 import subprocess
-from time import time, sleep
+import sys
+import urllib2
 #-------------------------------------------------------------------------------
 class Utils:
 #-------------------------------------------------------------------------------
@@ -24,7 +29,7 @@ class Utils:
         error = ""
 
         try:
-            command = "pwgen -s 15"
+            command = "pwgen -s 12"
             p = subprocess.Popen(command, stdout = subprocess.PIPE, shell=True)
             output, error = p.communicate()
             output = output.replace("\n", "")
@@ -39,7 +44,7 @@ class Utils:
     def do_ssh_work(cls, public_ipv4):
         try:
             command = \
-                "ssh %s 'chmod +x /etc/prep.sh ; /etc/prep.sh'" % public_ipv4
+                    "ssh %s 'chmod +x /etc/prep.sh ; /etc/prep.sh'" % public_ipv4
             p = subprocess.Popen(command, stdout = subprocess.PIPE, shell=True)
             output, error = p.communicate()
         except Exception,e:
@@ -47,15 +52,23 @@ class Utils:
 #-------------------------------------------------------------------------------
     @classmethod
     def print_server_status(cls, server):
-        print "\nServer Name:", server.name
-        print "Server Status:", server.status
-        print "Server Progress: %s%%" % server.progress
+        try:
+            print "\nServer Name:", server.name
+            print "Server Status:", server.status
+            print "Server Progress: %s%%" % server.progress
+        except Exception,e:
+            print cls.logging(e)
 #-------------------------------------------------------------------------------
     @classmethod
     def print_server_info(cls, server):
-        print "\nServer Status:", server.status
-        print "Server Public IP:", cls.get_ipv4(server.addresses["public"])
-        print "Server Root Password:", server.adminPass
+        try:
+            print "\nServer Status:", server.status
+            print "Server Public IP:", cls.get_ipv4(server.addresses["public"])
+            print "Server Root Password:", server.adminPass
+            if server.oc_server_password:
+                print "Server OpenCenter Admin Password:", server.oc_server_password
+        except Exception,e:
+            pass
 #-------------------------------------------------------------------------------
     @classmethod
     def get_ipv4(cls, addresses):
@@ -104,5 +117,51 @@ class Utils:
             return True
         except:
             return False
+#-------------------------------------------------------------------------------
+    @classmethod
+    def logging(cls, e):
+        frame,filename,line_number,function_name,lines,index=\
+                inspect.getouterframes(inspect.currentframe())[1]
+        msg ="Exception - %s | %s() | Line# %s: \n\t%s" % \
+                (filename, function_name, line_number, str(e))
+        return msg
+#-------------------------------------------------------------------------------
+    @classmethod
+    def oc_api(cls, url, username, password, **kwargs):
+        request = urllib2.Request(url)
+        result = None
+
+        if kwargs:
+            data = kwargs['kwargs']['json']
+            data = json.dumps(data)
+            request.add_data(data)
+            request.add_header("Content-Type", "application/json")   
+
+        base64string = base64.encodestring('%s:%s' % (username,
+            password)).replace('\n', '')
+        request.add_header("Authorization", "Basic %s" % base64string)   
+
+        try:
+            result = urllib2.urlopen(request)
+            json_data = json.loads(result.read())
+            return json_data
+        except Exception,e:
+            print cls.logging(e)
+            return None
+#-------------------------------------------------------------------------------
+    @classmethod
+    def extract_oc_object_type(cls, json_data, object_type):
+        if json_data is None:
+            return None
+        
+        status = int(json_data['status'])
+        
+        try:
+            if status == 200:
+                extract = json_data[object_type]
+                return extract
+        except Exception,e:
+            print Utils.logging(e)
+            return None
 #-------------------------------------------------------------------------------
 #===============================================================================
