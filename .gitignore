@@ -2,3 +2,4 @@ partner.py
 .sw*
 *.pyc
 api.py
+test.py

@@ -1,12 +1,13 @@
 #===============================================================================
 from time import time, sleep
-import httplib
+import base64
 import inspect
 import json
 import random
 import socket
 import subprocess
 import sys
+import urllib2
 #-------------------------------------------------------------------------------
 class Utils:
 #-------------------------------------------------------------------------------
@@ -28,7 +29,7 @@ class Utils:
         error = ""
 
         try:
-            command = "pwgen -s 15"
+            command = "pwgen -s 12"
             p = subprocess.Popen(command, stdout = subprocess.PIPE, shell=True)
             output, error = p.communicate()
             output = output.replace("\n", "")
@@ -43,7 +44,7 @@ class Utils:
     def do_ssh_work(cls, public_ipv4):
         try:
             command = \
-                "ssh %s 'chmod +x /etc/prep.sh ; /etc/prep.sh'" % public_ipv4
+                    "ssh %s 'chmod +x /etc/prep.sh ; /etc/prep.sh'" % public_ipv4
             p = subprocess.Popen(command, stdout = subprocess.PIPE, shell=True)
             output, error = p.communicate()
         except Exception,e:
@@ -51,15 +52,23 @@ class Utils:
 #-------------------------------------------------------------------------------
     @classmethod
     def print_server_status(cls, server):
-        print "\nServer Name:", server.name
-        print "Server Status:", server.status
-        print "Server Progress: %s%%" % server.progress
+        try:
+            print "\nServer Name:", server.name
+            print "Server Status:", server.status
+            print "Server Progress: %s%%" % server.progress
+        except Exception,e:
+            print cls.logging(e)
 #-------------------------------------------------------------------------------
     @classmethod
     def print_server_info(cls, server):
-        print "\nServer Status:", server.status
-        print "Server Public IP:", cls.get_ipv4(server.addresses["public"])
-        print "Server Root Password:", server.adminPass
+        try:
+            print "\nServer Status:", server.status
+            print "Server Public IP:", cls.get_ipv4(server.addresses["public"])
+            print "Server Root Password:", server.adminPass
+            if server.oc_server_password:
+                print "Server OpenCenter Admin Password:", server.oc_server_password
+        except Exception,e:
+            pass
 #-------------------------------------------------------------------------------
     @classmethod
     def get_ipv4(cls, addresses):
@@ -114,41 +123,29 @@ class Utils:
         frame,filename,line_number,function_name,lines,index=\
                 inspect.getouterframes(inspect.currentframe())[1]
         msg ="Exception - %s | %s() | Line# %s: \n\t%s" % \
-            (filename, function_name, line_number, str(e))
+                (filename, function_name, line_number, str(e))
         return msg
 #-------------------------------------------------------------------------------
     @classmethod
-    def post_json(cls, url, path, params_json):
-        params = json.dumps(params_json)
-        headers = {"Content-Type": "application/json"}
+    def oc_api(cls, url, username, password, **kwargs):
+        request = urllib2.Request(url)
+        result = None
 
-        conn = httplib.HTTPConnection(url)
-        conn.request("POST", path, params, headers)
-        res = conn.getresponse()
+        if kwargs:
+            data = kwargs['kwargs']['json']
+            data = json.dumps(data)
+            request.add_data(data)
+            request.add_header("Content-Type", "application/json")   
 
-        try:
-            json_data = json.loads(res.read())
-        except Exception,e:
-            print cls.logging(e)
-            return None
-
-        return json_data
-#-------------------------------------------------------------------------------
-    @classmethod
-    def get_json(cls, url, path):
-        params = ""
-        headers = {"Content-Type": "application/json"}
-
-        conn = httplib.HTTPConnection(url)
-        conn.request("GET", path, params, headers)
-        res = conn.getresponse()
+        base64string = base64.encodestring('%s:%s' % (username,
+            password)).replace('\n', '')
+        request.add_header("Authorization", "Basic %s" % base64string)   
 
         try:
-            json_data = json.loads(res.read())
+            result = urllib2.urlopen(request)
+            json_data = json.loads(result.read())
+            return json_data
         except Exception,e:
             print cls.logging(e)
-            return None
-
-        return json_data
 #-------------------------------------------------------------------------------
 #===============================================================================
