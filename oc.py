@@ -196,8 +196,8 @@ class Node:
 #-------------------------------------------------------------------------------
 
 #USER = "admin"
-#PASSWORD = "fW2T5XJezsE3"
-#SERVER_IPV4 = "166.78.124.234"
+#PASSWORD = ""
+#SERVER_IPV4 = ""
 #URL ="https://%s:8443" % SERVER_IPV4
 
 def provision_cluster(url, user, password, num_of_oc_agents):
@@ -210,15 +210,6 @@ def provision_cluster(url, user, password, num_of_oc_agents):
     chef_server = Adventure.provision_chef_server(node, url, user, password)
     print "*********** Chef-Server:"
     print chef_server['name']
-
-    # Provision remaining unprovisioned OC agent nodes as Chef Clients
-    num_of_clients = len(unprovisioned_nodes)
-    chef_clients = Adventure.provision_chef_clients(unprovisioned_nodes,
-            num_of_clients, url, user, password)
-    print "*********** Chef-Clients:"
-    for i in chef_clients:
-        print i['name']
-
 
     # Create Nova Cluster
     #Adventure.create_nova_cluster(URL, USER, PASSWORD)
@@ -250,4 +241,12 @@ def provision_cluster(url, user, password, num_of_oc_agents):
 #task_json = Utils.oc_api(URL + "/tasks/2", USER, PASSWORD)
 #task = Utils.extract_oc_object_type(task_json, "task")
 #print task
+
+# Provision remaining unprovisioned OC agent nodes as Chef Clients
+#num_of_clients = len(unprovisioned_nodes)
+#chef_clients = Adventure.provision_chef_clients(unprovisioned_nodes,
+#        num_of_clients, url, user, password)
+#print "*********** Chef-Clients:"
+#for i in chef_clients:
+#    print i['name']
 #-------------------------------------------------------------------------------
