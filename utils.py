@@ -63,10 +63,12 @@ class Utils:
     def print_server_info(cls, server):
         try:
             print "\nServer Status:", server.status
+            print "Server Name:", server.name
             print "Server Public IP:", cls.get_ipv4(server.addresses["public"])
             print "Server Root Password:", server.adminPass
-            if server.oc_server_password:
-                print "Server OpenCenter Admin Password:", server.oc_server_password
+            if server.oc_password:
+                print "OpenCenter Username: admin"
+                print "OpenCenter Password:", server.oc_password
         except Exception,e:
             pass
 #-------------------------------------------------------------------------------

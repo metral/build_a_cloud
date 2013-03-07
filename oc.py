@@ -195,31 +195,33 @@ class Node:
         return unprovisioned_nodes
 #-------------------------------------------------------------------------------
 
-USER = "admin"
-PASSWORD = "fW2T5XJezsE3"
-SERVER_IPV4 = "166.78.124.234"
-URL ="https://%s:8443" % SERVER_IPV4
+#USER = "admin"
+#PASSWORD = "fW2T5XJezsE3"
+#SERVER_IPV4 = "166.78.124.234"
+#URL ="https://%s:8443" % SERVER_IPV4
 
-unprovisioned_nodes = Node.wait_for_agents(6, URL, USER, PASSWORD)
+def provision_cluster(url, user, password, num_of_oc_agents):
+    # Wait for all unprovisioned OC agent nodes to be up & talking to OC server
+    unprovisioned_nodes = Node.wait_for_agents(\
+            num_of_oc_agents, url, user, password)
 
-# Provision Chef Server
-node = unprovisioned_nodes.pop(0)
-chef_server = Adventure.provision_chef_server(node, URL, USER, PASSWORD)
-print "*********** Chef-Server:"
-print chef_server['name']
+    # Provision OC agent as Chef Server
+    node = unprovisioned_nodes.pop(0)
+    chef_server = Adventure.provision_chef_server(node, url, user, password)
+    print "*********** Chef-Server:"
+    print chef_server['name']
 
-# Provision Chef Clients
-num_of_clients = 2
-chef_clients = Adventure.provision_chef_clients(unprovisioned_nodes,
-        num_of_clients, URL, USER, PASSWORD)
-print "*********** Chef-Clients:"
-for i in chef_clients:
-    print i['name']
+    # Provision remaining unprovisioned OC agent nodes as Chef Clients
+    num_of_clients = len(unprovisioned_nodes)
+    chef_clients = Adventure.provision_chef_clients(unprovisioned_nodes,
+            num_of_clients, url, user, password)
+    print "*********** Chef-Clients:"
+    for i in chef_clients:
+        print i['name']
 
 
-# Create Nova Cluster
-#Adventure.create_nova_cluster(URL, USER, PASSWORD)
-
+    # Create Nova Cluster
+    #Adventure.create_nova_cluster(URL, USER, PASSWORD)
 
 
 # testing

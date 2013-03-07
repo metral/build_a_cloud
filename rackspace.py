@@ -3,6 +3,7 @@ import os_networksv2_python_novaclient_ext as rax_network
 from novaclient.v1_1 import client as python_novaclient
 from time import sleep
 from utils import Utils
+import oc
 import sys
 #-------------------------------------------------------------------------------
 default_nics = [
@@ -136,51 +137,69 @@ class CloudServers():
             print Utils.logging(e)
 #-------------------------------------------------------------------------------
     @classmethod
-    def update_server_root_password(cls, updated_server, orig_server):
+    def update_root_password(cls, oc_server, updated_oc_server):
         try:
-            updated_server.adminPass = orig_server.adminPass
+            updated_oc_server.adminPass = oc_server.adminPass
         except Exception,e:
             print Utils.logging(e)
-        return updated_server
+        return updated_oc_server
 #-------------------------------------------------------------------------------
     @classmethod
-    def update_oc_admin_password(cls, updated_server, orig_server):
+    def update_oc_password(cls, oc_server, updated_oc_server):
         try:
-            updated_server.oc_server_password = orig_server.oc_server_password
+            updated_oc_server.oc_password = oc_server.oc_password
         except Exception,e:
             pass
+        return updated_oc_server
+#-------------------------------------------------------------------------------
+    @classmethod
+    def check_status(cls, nova_client, server):
+        updated_server = cls.update_server(nova_client, server)
+        
+        if updated_server.status == "ERROR":
+            cls.delete_server(updated_server)
+            return False
+        elif updated_server.status != "ACTIVE":
+            Utils.print_server_status(updated_server)
+            return False
+        elif updated_server.status == "ACTIVE":
+            Utils.print_server_status(updated_server)
+            return True
+        
         return updated_server
 #-------------------------------------------------------------------------------
     @classmethod
-    def wait_for_server(cls, nova_client, server, oc_port = None):
-        # Check server status until active
-        updated_server = nova_client.servers.get(server.id)
+    def post_setup(cls, nova_client, oc_server, oc_port = None):
+        # Update server to have latest info
+        updated_oc_server = cls.update_server(nova_client, oc_server)
 
-        while (updated_server.status != "ACTIVE"):
-            Utils.print_server_status(updated_server)
-            updated_server = cls.update_server(nova_client, server)
-            
-            if updated_server.status == "ERROR":
-                cls.delete_server(updated_server)
-                return False
-                
-            sleep(10)
-            
         # Set passwords
-        updated_server = cls.update_server_root_password(updated_server, server)
-        updated_server = cls.update_oc_admin_password(updated_server, server)
+        updated_oc_server = cls.update_root_password(\
+                oc_server, updated_oc_server)
+        updated_oc_server = cls.update_oc_password(oc_server, updated_oc_server)
         
         # Print server info
-        Utils.print_server_info(updated_server)
+        Utils.print_server_info(updated_oc_server)
 
         # Run payloads via SSH
-        ipv4 = Utils.get_ipv4(updated_server.addresses["public"])
+        ipv4 = Utils.get_ipv4(updated_oc_server.addresses["public"])
         Utils.do_ssh_work(ipv4)
 
         # Wait for opencenter services to be ready, if required
-        if oc_port: cls.wait_for_oc_service(updated_server, oc_port)
+        if oc_port: cls.wait_for_oc_service(updated_oc_server, oc_port)
         
-        return True
+        return updated_oc_server
+#-------------------------------------------------------------------------------
+    @classmethod
+    def wait_for_oc_server(cls, nova_client, oc_server, oc_port = None):
+        # Check server status until active
+
+        while not cls.check_status(nova_client, oc_server):
+            sleep(10)
+        
+        updated_oc_server = cls.post_setup(nova_client, oc_server, oc_port)
+        
+        return updated_oc_server
 #-------------------------------------------------------------------------------
     @classmethod
     def launch_cluster(cls, nova_client, network, num_of_oc_agents):
@@ -189,42 +208,47 @@ class CloudServers():
         
         fp = "vm_scripts/install_oc_server.sh"
         data = Utils.read_data(fp)
-        oc_server_password = Utils.generate_password()
-        data = data.replace("PASSWORD", oc_server_password)
+        oc_password = Utils.generate_password()
+        data = data.replace("PASSWORD", oc_password)
 
         # Create OpenCenter Server
-        created = False
         oc_server = None
-        oc_server_ipv4 = None
-        while not created:
+        updated_oc_server = None
+        while not updated_oc_server:
             oc_server = cls.create_server(nova_client, name, network.id, data)
-            oc_server.oc_server_password = oc_server_password
+            oc_server.oc_password = oc_password
 
             # Wait for OpenCenter server services
             oc_server_port = 443   # OpenCenter HTTPS Server
-            created = \
-                    cls.wait_for_server(nova_client, oc_server, oc_server_port)
+            updated_oc_server = cls.wait_for_oc_server(\
+                    nova_client, oc_server, oc_server_port)
             
-            if created:
-                # Get OpenCenter IP
-                oc_server = nova_client.servers.get(oc_server.id)
-                oc_server_ipv4 = Utils.get_ipv4(oc_server.addresses["public"])
 
         # Create opencenter agents
+        ipv4 = Utils.get_ipv4(updated_oc_server.addresses["public"])
         fp = "vm_scripts/install_oc_agent.sh"
         data = Utils.read_data(fp)
-        data = data.replace("SERVER_IP", oc_server_ipv4)
-        data = data.replace("PASSWORD", oc_server_password)
+        data = data.replace("SERVER_IP", ipv4)
+        data = data.replace("PASSWORD", oc_password)
 
-        created = False
-        while not created:
-            for i in range(0, num_of_oc_agents):
-                created = False
-                name = Utils.generate_unique_name("bac-opencenter-agent")
-                oc_agent = \
-                        cls.create_server(nova_client, name, network.id, data)
-                created = \
-                        cls.wait_for_server(nova_client, oc_agent)
+        oc_agents = []
+        for i in range(0, num_of_oc_agents):
+            name = Utils.generate_unique_name("bac-opencenter-agent")
+            oc_agent = cls.create_server(nova_client, name, network.id, data)
+            oc_agents.append(oc_agent)    
+            sleep(2)
+            
+        updated_oc_agents = []
+        while len(updated_oc_agents) < len(oc_agents):
+            for oc_agent in oc_agents:
+                if (oc_agent not in updated_oc_agents) and \
+                        cls.check_status(nova_client, oc_agent):
+                    updated_oc_agent = cls.post_setup(nova_client, oc_agent)
+                    updated_oc_agents.append(updated_oc_agent)
+                else:
+                    sleep(10)
+        
+        return updated_oc_server, updated_oc_agents
 #-------------------------------------------------------------------------------
     @classmethod
     def build_a_cloud(cls, nova_client):
@@ -235,11 +259,27 @@ class CloudServers():
         cls.check_quotas(nova_client)
 
         # Create new network
-        network = cls.create_network(nova_client, "bac", "192.168.4.0/24")
+        network = cls.create_network(nova_client, "bac", "192.168.3.0/24")
 
         # Launch opencenter cluster
         num_of_oc_agents = 3
-        cls.launch_cluster(nova_client, network, num_of_oc_agents)
+        oc_server, oc_agents = \
+                cls.launch_cluster(nova_client, network, num_of_oc_agents)
+                
+        print "************************** Cluster Launched" 
+        Utils.print_server_info(oc_server)
+        for oc_agent in oc_agents:
+            Utils.print_server_info(oc_agent)
+            
+
+        print "************************** Provisioning Cluster" 
+        oc_user = "admin"
+        oc_password = oc_server.oc_password
+        oc_server_ipv4 = Utils.get_ipv4(oc_server.addresses["public"])
+        oc_url ="https://%s:8443" % oc_server_ipv4
+        
+        oc.provision_cluster(oc_url, oc_user, oc_password, num_of_oc_agents)
+        
 #-------------------------------------------------------------------------------
     @classmethod
     def list_networks(cls, nova_client):
