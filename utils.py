@@ -84,7 +84,7 @@ class Utils:
 #-------------------------------------------------------------------------------
     @classmethod
     def generate_unique_name(cls, name):
-        unique_name = "_".join([name, cls.timestamp_rand()])
+        unique_name = "-".join([name, cls.timestamp_rand()])
         return unique_name
 #-------------------------------------------------------------------------------
     @classmethod
@@ -147,9 +147,12 @@ class Utils:
             result = urllib2.urlopen(request)
             json_data = json.loads(result.read())
             return json_data
-        except Exception,e:
-            print cls.logging(e)
-            return None
+        except Exception, e:
+            error_json = e.read()
+            if e.code != 409:
+                print cls.logging(error_json)
+            json_data = json.loads(error_json)
+            return json_data
 #-------------------------------------------------------------------------------
     @classmethod
     def extract_oc_object_type(cls, json_data, object_type):
@@ -165,5 +168,20 @@ class Utils:
         except Exception,e:
             print Utils.logging(e)
             return None
+#-------------------------------------------------------------------------------
+    @classmethod
+    def execute(cls, path, url, user, password, params = None):
+        full_url = url + path
+
+        result = None
+        if params:
+            result = Utils.oc_api(full_url, user, password,
+                    kwargs={'json': params})
+        else:
+            result = Utils.oc_api(full_url, user, password)
+
+        if result:
+            return result
+        return None
 #-------------------------------------------------------------------------------
 #===============================================================================

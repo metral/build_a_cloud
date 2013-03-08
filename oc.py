@@ -1,31 +1,49 @@
 #-------------------------------------------------------------------------------
 from time import sleep
 from utils import Utils
+import json
 #-------------------------------------------------------------------------------
 ################################################################################
 class Task:
 #-------------------------------------------------------------------------------
     @classmethod
-    def wait_for_task(cls, parent_id, node, action, url, user, password):
+    # Wait for task to be tasked & adventurated on
+    # When an adventure is tasked, 2 tasks are actually created: adventurate &
+    # then the actual adventure that is spawned by adventurate. therefore, 
+    # the task_id returned during adventure execution is that of adventurate, 
+    # not of the actual task, so you need parent_id of the 
+    # adventure task. thus to wait for the task you need to compare the
+    # parent_id (adventurate task), the action invoked & the node_id in 
+    # which the adventure was issued upon. 
+    # However, in the case of create_nova_cluster where the task is a 
+    # plan that is only an adveruate task, there is no parent and the node_id
+    # is the OpenCenter server itself, so you can only compare the task_id 
+    def wait_for_task(cls, parent_id, node, action, url, user, password,
+            queued_task_id = None):
         tasked = False
         state = None
-        node_name = node['name']
         task_id = None
-        
+
         while not tasked:
             tasks_json = Utils.oc_api(url + "/tasks/", user, password)
             tasks = Utils.extract_oc_object_type(tasks_json, "tasks")
             for task in tasks:
-                if (task['node_id'] == node['id']) and \
-                    (task['action'] == action) and \
-                    (task['parent_id'] == parent_id):
-                    tasked = True
-                    task_id = task['id']
-                    state = task['state']
-            print "Waiting for %s to be tasked on %s..." % (action, node_name)
+                if action == "adventurate":
+                    if task['id'] == queued_task_id:
+                        tasked = True
+                        task_id = task['id']
+                        state = task['state']
+                else:
+                    if (task['node_id'] == node['id']) and \
+                        (task['action'] == action) and \
+                        (task['parent_id'] == parent_id):
+                        tasked = True
+                        task_id = task['id']
+                        state = task['state']
+            print "Waiting for '%s' to be tasked ..." % (action)
             sleep(2)
         while(state != 'done' and task_id):
-            print "Waiting for %s to adventurate on %s..." % (action, node_name)
+            print "Waiting for '%s' to run ..." % (action)
             path = "/tasks/%s" % task_id
             updated_json = Utils.oc_api(url + path, user, password)
             updated_task = Utils.extract_oc_object_type(updated_json, "task")
@@ -44,72 +62,86 @@ class Adventure:
 #-------------------------------------------------------------------------------
     @classmethod
     def find(cls, adventure_name, url, user, password):
-        # Get adventures
+        # Find adventures
         adventures = cls.get_adventures(url, user, password)
-        
+
         for adventure in adventures:
             if adventure['name'] == adventure_name:
-                return adventure 
-        return None
-#-------------------------------------------------------------------------------
-    @classmethod
-    def execute(cls, adventure, url, user, password, params = None):
-        path = "/adventures/%s/execute" % adventure['id']
-        full_url = url + path
-        
-        result = None
-        if params:
-            result = Utils.oc_api(full_url, user, password,
-                    kwargs={'json': params})
-        else:
-            result = Utils.oc_api(full_url, user, password)
-
-        if result:
-            return result
+                return adventure
         return None
 #-------------------------------------------------------------------------------
     @classmethod
     def provision_chef_server(cls, node, url, user, password):
-        
+
         # Execute 'install_chef_server' adventure
         adventure = cls.find("Install Chef Server", url, user, password)
         params = {
                 "node": node['id'],
                 }
-        result = cls.execute(adventure, url, user, password, params)
-        
-        # result['id'] is adventurate parent id
+
+        path = "/adventures/%s/execute" % adventure['id']
+        result = Utils.execute(path, url, user, password, params)
+
+        # result['task']['id'] is adventurate parent id
         parent_id = int(result['task']['id'])
-        
+
         try:
             if result['status'] == 202:
                 # Monitor tasking of install_chef_server
                 action = "install_chef_server"
                 Task.wait_for_task(parent_id, node, action, url, user, password)
-                    
+
                 # Monitor tasking of download_cookbooks
                 action = "download_cookbooks"
                 Task.wait_for_task(parent_id, node, action, url, user, password)
         except Exception,e:
             print Utils.logging(e)
             return None
-            
+
         return node
 #-------------------------------------------------------------------------------
     @classmethod
-    def create_nova_cluster(cls, url, user, password):
+    def create_nova_cluster(cls, node, chef_server, url, user,
+        password, cidr):
+
+        workspace_node = Node.find("workspace", url, user, password)
+
         # Create Nova Cluster
-        adventure = Adventure.find("Create Nova Cluster", url, user, password)
-        result = Adventure.execute(adventure, url, user, password)
-        
-        # result['id'] is adventurate parent id
-        parent_id = int(result['task']['id'])
+        params = {
+                "node": workspace_node['id'],
+                "plan": [
+                    { "primitive": "node.add_backend",
+                        "ns": {
+                            "backend": "nova"}},
+                        { "primitive": "nova.create_cluster",
+                            "ns": {
+                                "chef_server": chef_server['id'],
+                                "cluster_name": "NovaCluster",
+                                "nova_public_if": "eth2",
+                                "keystone_admin_pw": password,
+                                "nova_dmz_cidr": "172.16.0.0/24",
+                                "nova_vm_fixed_range": "172.28.48.0/24",
+                                "nova_vm_fixed_if": "eth2",
+                                "nova_vm_bridge": "br100",
+                                "osops_mgmt": cidr,
+                                "osops_nova": cidr,
+                                "osops_public": cidr,
+                                }
+                            }
+                        ]
+                }
+
+        path = "/plan/"
+        result = Utils.execute(path, url, user, password, params)
+
+        task_id = int(result['task']['id'])
         
         try:
             if result['status'] == 202:
                 # Monitor tasking of create_nova_cluster
-                action = "" #TODO
-                Task.wait_for_task(parent_id, node, action, url, user, password)
+                action = "adventurate"
+                Task.wait_for_task(None, None, action, url, \
+                        user, password, task_id)
         except Exception,e:
             print Utils.logging(e)
 #-------------------------------------------------------------------------------
@@ -117,27 +149,29 @@ class Adventure:
     def provision_chef_clients(cls, nodes, num_of_clients, url, user, password):
         provisioned_chef_clients = []
         adventure = Adventure.find("Install Chef Client", url, user, password)
-        
+
         for i in range(0, num_of_clients):
             node = nodes.pop(0)
             params = {
                     "node": node['id'],
                     }
-            result = Adventure.execute(adventure, url, user, password, params)
-        
-            # result['id'] is adventurate parent id
+
+            path = "/adventures/%s/execute" % adventure['id']
+            result = Utils.execute(path, url, user, password, params)
+
+            # result['task']['id'] is adventurate parent id
             parent_id = int(result['task']['id'])
 
             try:
                 if result['status'] == 202:
                     # Monitor tasking of install_chef
                     action = "install_chef"
-                    Task.wait_for_task(parent_id, node, action, 
+                    Task.wait_for_task(parent_id, node, action,
                             url, user, password)
                     provisioned_chef_clients.append(node)
             except Exception,e:
                 print Utils.logging(e)
-        
+
         return provisioned_chef_clients
 #-------------------------------------------------------------------------------
     @classmethod
@@ -153,54 +187,59 @@ class Adventure:
 class Node:
 #-------------------------------------------------------------------------------
     @classmethod
-    def get_unprovisioned(cls, json_data):
-        if json_data is None:
-            return None
-        
-        status = int(json_data['status'])
-        
+    def get_unprovisioned(cls, nodes, url, user, password):
+        unprovisioned_nodes = []
         try:
-            if status == 200:
-                nodes = json_data['nodes']
-                unprovisioned = None
-                unprovisioned_nodes = []
+            unprovisioned_node = cls.find("unprovisioned", url, user, password)
+            if unprovisioned_node:
                 for node in nodes:
-                    if node['name'] == "unprovisioned":
-                        unprovisioned = node
-                if unprovisioned:
-                    for node in nodes:
-                        try:
-                            parent_id = node['facts']['parent_id']
-                            if parent_id == unprovisioned['id']:
-                                unprovisioned_nodes.append(node)
-                        except:
-                            pass
+                    try:
+                        parent_id = node['facts']['parent_id']
+                        if parent_id == unprovisioned_node['id']:
+                            unprovisioned_nodes.append(node)
+                    except:
+                        pass
 
-                return unprovisioned_nodes
+            return unprovisioned_nodes
         except Exception,e:
             print Utils.logging(e)
             return None
 #-------------------------------------------------------------------------------
     @classmethod
+    def get_nodes(cls, url, user, password):
+        # Get nodes
+        nodes_json = Utils.oc_api(url + "/nodes/", user, password)
+        nodes = Utils.extract_oc_object_type(nodes_json, "nodes")
+        return nodes
+#-------------------------------------------------------------------------------
+    @classmethod
+    def find(cls, node_name, url, user, password):
+        # Find nodes
+        nodes = cls.get_nodes(url, user, password)
+
+        for node in nodes:
+            if node['name'] == node_name:
+                return node
+        return None
+#-------------------------------------------------------------------------------
+    @classmethod
     def wait_for_agents(cls, total_agents, url, user, password):
         unprovisioned_nodes = []
-        
+
         while len(unprovisioned_nodes) < total_agents:
-            nodes_json = Utils.oc_api(url + "/nodes/", user, password)
-            unprovisioned_nodes = cls.get_unprovisioned(nodes_json)
+            nodes = cls.get_nodes(url, user, password)
+            unprovisioned_nodes = cls.get_unprovisioned(nodes, \
+                    url, user, password)
             if len(unprovisioned_nodes) < total_agents:
                 print "Waiting for all unprovisioned nodes..."
                 sleep(10)
-        
+
         return unprovisioned_nodes
 #-------------------------------------------------------------------------------
-
-#USER = "admin"
-#PASSWORD = ""
-#SERVER_IPV4 = ""
-#URL ="https://%s:8443" % SERVER_IPV4
-
-def provision_cluster(url, user, password, num_of_oc_agents):
+def provision_cluster(oc_server, url, user, password, num_of_oc_agents, cidr):
+    # Get OpenCenter server node
+    service_nodes_server = Node.find(oc_server.name, url, user, password)
+    
     # Wait for all unprovisioned OC agent nodes to be up & talking to OC server
     unprovisioned_nodes = Node.wait_for_agents(\
             num_of_oc_agents, url, user, password)
@@ -212,41 +251,7 @@ def provision_cluster(url, user, password, num_of_oc_agents):
     print chef_server['name']
 
     # Create Nova Cluster
-    #Adventure.create_nova_cluster(URL, USER, PASSWORD)
-
-
-# testing
-#print "*********** Unprovisioned Nodes:"
-#for i in unprovisioned_nodes:
-#    print i['name']
-#
-#print "*********** Adventures:"
-#adventures_json = Utils.oc_api(URL + "/adventures/", USER, PASSWORD)
-#adventures = Utils.extract_oc_object_type(adventures_json, "adventures")
-#for i in adventures:
-#    print i['name']
-#
-#print "*********** Adventure:"
-#adventure_json = Utils.oc_api(URL + "/adventures/2", USER, PASSWORD)
-#adventure = Utils.extract_oc_object_type(adventure_json, "adventure")
-#print adventure
-#
-#print "*********** Tasks:"
-#tasks_json = Utils.oc_api(URL + "/tasks/", USER, PASSWORD)
-#tasks = Utils.extract_oc_object_type(tasks_json, "tasks")
-#for i in tasks:
-#    print i['name']
-#        
-#print "*********** Task:"
-#task_json = Utils.oc_api(URL + "/tasks/2", USER, PASSWORD)
-#task = Utils.extract_oc_object_type(task_json, "task")
-#print task
-
-# Provision remaining unprovisioned OC agent nodes as Chef Clients
-#num_of_clients = len(unprovisioned_nodes)
-#chef_clients = Adventure.provision_chef_clients(unprovisioned_nodes,
-#        num_of_clients, url, user, password)
-#print "*********** Chef-Clients:"
-#for i in chef_clients:
-#    print i['name']
+    print "*********** Create Nova Cluster:"
+    Adventure.create_nova_cluster(service_nodes_server, chef_server, url, \
+            user, password, cidr)
 #-------------------------------------------------------------------------------
