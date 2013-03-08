@@ -259,12 +259,14 @@ class CloudServers():
         cls.check_quotas(nova_client)
 
         # Create new network
-        network = cls.create_network(nova_client, "bac", "192.168.3.0/24")
+        cidr = "192.168.3.0/24"
+        network = cls.create_network(nova_client, "bac", cidr)
 
         # Launch opencenter cluster
         num_of_oc_agents = 3
         oc_server, oc_agents = \
                 cls.launch_cluster(nova_client, network, num_of_oc_agents)
+                
                 
         print "************************** Cluster Launched" 
         Utils.print_server_info(oc_server)
@@ -278,7 +280,8 @@ class CloudServers():
         oc_server_ipv4 = Utils.get_ipv4(oc_server.addresses["public"])
         oc_url ="https://%s:8443" % oc_server_ipv4
         
-        oc.provision_cluster(oc_url, oc_user, oc_password, num_of_oc_agents)
+        oc.provision_cluster(oc_server, oc_url, oc_user, \
+            oc_password, num_of_oc_agents, cidr)
         
 #-------------------------------------------------------------------------------
     @classmethod
