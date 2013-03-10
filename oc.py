@@ -43,14 +43,33 @@ class Task:
             print "Waiting for '%s' to be tasked ..." % (action)
             sleep(2)
         while(state != 'done' and task_id):
-            print "Waiting for '%s' to run ..." % (action)
+            print "Waiting for '%s' to complete ..." % (action)
             path = "/tasks/%s" % task_id
             updated_json = Utils.oc_api(url + path, user, password)
             updated_task = Utils.extract_oc_object_type(updated_json, "task")
             if updated_task:
                 state = updated_task['state']
             sleep(5)
+
 ################################################################################
+            
+class Fact:
+#-------------------------------------------------------------------------------
+    @classmethod
+    def create(cls, url, user, password, params):
+        result = None
+        path = "/facts/"
+        full_url = url + path
+        
+        if params:
+            result = Utils.oc_api(full_url, user, password,
+                    kwargs={'json': params})
+            return result
+
+        return None
+#-------------------------------------------------------------------------------
+################################################################################
+            
 class Adventure:
 #-------------------------------------------------------------------------------
     @classmethod
@@ -94,6 +113,45 @@ class Adventure:
                 # Monitor tasking of download_cookbooks
                 action = "download_cookbooks"
                 Task.wait_for_task(parent_id, node, action, url, user, password)
+        except Exception,e:
+            print Utils.logging(e)
+            return None
+
+        return node
+#-------------------------------------------------------------------------------
+    @classmethod
+    def provision_controller(cls, node, url, user, password):
+
+        infrastructure_node = Node.find("Infrastructure", url, user, password)
+        
+        # Execute controller fact
+        params = {
+                "node_id": ("%s" % node['id']),
+                "key": "parent_id",
+                "value": infrastructure_node['id']
+                }
+
+        result = Fact.create(url, user, password, params)
+
+        # result['task']['id'] is adventurate parent id
+        parent_id = int(result['task']['id'])
+
+        try:
+            if result['status'] == 202:
+                # Monitor tasking of install_chef client
+                action = "install_chef"
+                Task.wait_for_task(parent_id, node, action, url, user, password)
+
+                # Monitor tasking of running chef-client for 1st time
+                action = "run_chef"
+                Task.wait_for_task(parent_id + 2, node, action, \
+                        url, user, password)
+                
+                # Monitor tasking of running chef-client for 2nd time
+                # (post-install)
+                action = "run_chef"
+                Task.wait_for_task(parent_id + 4, node, action, \
+                        url, user, password)
         except Exception,e:
             print Utils.logging(e)
             return None
@@ -175,10 +233,6 @@ class Adventure:
         return provisioned_chef_clients
 #-------------------------------------------------------------------------------
     @classmethod
-    def provision_controller(cls,node):
-        None
-#-------------------------------------------------------------------------------
-    @classmethod
     def provision_compute(cls,node):
         None
 
@@ -231,7 +285,7 @@ class Node:
             unprovisioned_nodes = cls.get_unprovisioned(nodes, \
                     url, user, password)
             if len(unprovisioned_nodes) < total_agents:
-                print "Waiting for all unprovisioned nodes..."
+                print "Waiting for all unprovisioned/available nodes..."
                 sleep(10)
 
         return unprovisioned_nodes
@@ -249,9 +303,30 @@ def provision_cluster(oc_server, url, user, password, num_of_oc_agents, cidr):
     chef_server = Adventure.provision_chef_server(node, url, user, password)
     print "*********** Chef-Server:"
     print chef_server['name']
+    
+    #TODO: DELETE THIS!!! 
+    #chef_server = {'id': 5}
 
-    # Create Nova Cluster
+    ## Create Nova Cluster
     print "*********** Create Nova Cluster:"
     Adventure.create_nova_cluster(service_nodes_server, chef_server, url, \
             user, password, cidr)
+    
+    # Provision Nova Controller
+    print "*********** Nova Controller:"
+    node = unprovisioned_nodes.pop(0)
+    controller = Adventure.provision_controller(node, url, user, password)
+    print controller['name']
+#-------------------------------------------------------------------------------
+#USER = "admin"
+#PASSWORD = "ExgfZHr4T5Yy"
+#SERVER_IPV4 = "166.78.100.53"
+#URL ="https://%s:8443" % SERVER_IPV4
+#
+#cidr = "192.168.3.0/24"
+#class Foo():
+#    name = "bac-opencenter-server-1362771927-69840502"
+#oc_server = Foo()
+#
+#provision_cluster(oc_server, URL, USER, PASSWORD, 4, cidr)
 #-------------------------------------------------------------------------------

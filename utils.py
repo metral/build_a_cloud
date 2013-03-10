@@ -111,7 +111,7 @@ class Utils:
     @classmethod
     def port_is_open(cls, ip, port):
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.settimeout(10)
+        s.settimeout(30)
 
         try:
             s.connect((ip, int(port)))
