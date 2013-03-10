@@ -135,6 +135,7 @@ class CloudServers():
             return updated_server
         except Exception,e:
             print Utils.logging(e)
+            return None
 #-------------------------------------------------------------------------------
     @classmethod
     def update_root_password(cls, oc_server, updated_oc_server):
@@ -156,17 +157,20 @@ class CloudServers():
     def check_status(cls, nova_client, server):
         updated_server = cls.update_server(nova_client, server)
         
-        if updated_server.status == "ERROR":
-            cls.delete_server(updated_server)
-            return False
-        elif updated_server.status != "ACTIVE":
-            Utils.print_server_status(updated_server)
-            return False
-        elif updated_server.status == "ACTIVE":
-            Utils.print_server_status(updated_server)
-            return True
-        
-        return updated_server
+        try:
+            if not updated_server:
+                return None
+            elif updated_server.status == "ERROR":
+                return None
+            elif updated_server.status == "BUILD":
+                Utils.print_server_status(updated_server)
+                return False
+            elif updated_server.status == "ACTIVE":
+                Utils.print_server_status(updated_server)
+                return True
+        except Exception,e:
+            print Utils.logging(e)
+            return None
 #-------------------------------------------------------------------------------
     @classmethod
     def post_setup(cls, nova_client, oc_server, oc_port = None):
@@ -191,19 +195,45 @@ class CloudServers():
         return updated_oc_server
 #-------------------------------------------------------------------------------
     @classmethod
-    def wait_for_oc_server(cls, nova_client, oc_server, oc_port = None):
-        # Check server status until active
+    def wait_for_oc_server(cls, nova_client, oc_server, 
+            network, oc_port = None):
 
-        while not cls.check_status(nova_client, oc_server):
-            sleep(10)
+        updated_oc_server = oc_server
         
-        updated_oc_server = cls.post_setup(nova_client, oc_server, oc_port)
+        # Check server status until active
+        status = cls.check_status(nova_client, updated_oc_server)
+        while not status:
+            if status == False:
+                sleep(10)
+                updated_oc_server = \
+                        cls.update_server(nova_client, updated_oc_server)
+            elif status is None:
+                print "\nServer Error (Server): Deleting %s" \
+                        % updated_oc_server.name
+                cls.delete_server(updated_oc_server)
+                sleep(10)
+                updated_oc_server = cls.launch_oc_server(nova_client, network)
+            status = cls.check_status(nova_client, updated_oc_server)
+                
+        ipv4 = Utils.get_ipv4(updated_oc_server.addresses["public"])
+        active_port = 22    # SSH
+        
+        # If active, do post setup
+        if Utils.port_is_open(ipv4, active_port):
+            updated_oc_server = cls.post_setup(nova_client, oc_server, oc_port)
+        # If for some reason network is not working even when active, try again
+        else: 
+            cls.delete_server(updated_oc_server)
+            sleep(10)
+            updated_oc_server = cls.launch_oc_server(nova_client, network)
+            oc_port = 443
+            updated_oc_server = cls.wait_for_oc_server(\
+                    nova_client, oc_server, network, oc_port)
         
         return updated_oc_server
 #-------------------------------------------------------------------------------
     @classmethod
-    def launch_cluster(cls, nova_client, network, num_of_oc_agents):
-        # Create OpenCenter Server & Prep install file
+    def launch_oc_server(cls, nova_client, network):
         name = Utils.generate_unique_name("bac-opencenter-server")
         
         fp = "vm_scripts/install_oc_server.sh"
@@ -213,42 +243,93 @@ class CloudServers():
 
         # Create OpenCenter Server
         oc_server = None
-        updated_oc_server = None
-        while not updated_oc_server:
-            oc_server = cls.create_server(nova_client, name, network.id, data)
-            oc_server.oc_password = oc_password
+        oc_server = cls.create_server(nova_client, name, network.id, data)
+        oc_server.oc_password = oc_password
+        
+        return oc_server
+#-------------------------------------------------------------------------------
+    @classmethod
+    def wait_for_oc_agents(cls, oc_agents, nova_client, oc_server, network):
+        updated_oc_agents = []
+        
+        active_port = 22    # SSH
+        while len(updated_oc_agents) != len(oc_agents):
+            for index, oc_agent in enumerate(oc_agents):
+                status = cls.check_status(nova_client, oc_agent)
+                
+                if status == True:
+                    updated_oc_agent = cls.update_server(nova_client, oc_agent)
+                    ipv4 = Utils.get_ipv4(updated_oc_agent.addresses["public"])
+                    if updated_oc_agent not in updated_oc_agents:
+                        if Utils.port_is_open(ipv4, active_port):
+                            updated_oc_agent = \
+                                    cls.post_setup(nova_client, oc_agent)
+                            updated_oc_agents.append(updated_oc_agent)
+                        else:
+                            print "\nServer Error (Agent Net): Deleting %s" \
+                                    % oc_agent.name
+                            cls.delete_server(oc_agent)
+                            sleep(10)
+                            oc_agent = cls.launch_oc_agent(\
+                                    oc_server, nova_client, network)
+                            oc_agents[index] = oc_agent    
+                elif status == False:
+                    sleep(10)
+                elif status is None:
+                    print "\nServer Error (Agent): Deleting %s", oc_agent.name
+                    cls.delete_server(oc_agent)
+                    sleep(10)
+                    oc_agent = cls.launch_oc_agent(\
+                            oc_server, nova_client, network)
+                    oc_agents[index] = oc_agent    
+        
+        return updated_oc_agents
+#-------------------------------------------------------------------------------
+    @classmethod
+    def launch_oc_agent(cls, oc_server, nova_client, network):
+        name = Utils.generate_unique_name("bac-opencenter-agent")
 
-            # Wait for OpenCenter server services
-            oc_server_port = 443   # OpenCenter HTTPS Server
-            updated_oc_server = cls.wait_for_oc_server(\
-                    nova_client, oc_server, oc_server_port)
-            
-
-        # Create opencenter agents
-        ipv4 = Utils.get_ipv4(updated_oc_server.addresses["public"])
+        ipv4 = Utils.get_ipv4(oc_server.addresses["public"])
+        
         fp = "vm_scripts/install_oc_agent.sh"
         data = Utils.read_data(fp)
         data = data.replace("SERVER_IP", ipv4)
-        data = data.replace("PASSWORD", oc_password)
+        data = data.replace("PASSWORD", oc_server.oc_password)
+            
+        oc_agent = cls.create_server(nova_client, name, network.id, data)
+        
+        return oc_agent
+#-------------------------------------------------------------------------------
+    @classmethod
+    def launch_oc_agents(cls, oc_server, nova_client, 
+            network, num_of_oc_agents):
 
         oc_agents = []
         for i in range(0, num_of_oc_agents):
-            name = Utils.generate_unique_name("bac-opencenter-agent")
-            oc_agent = cls.create_server(nova_client, name, network.id, data)
+            oc_agent = cls.launch_oc_agent(oc_server, nova_client, network)
             oc_agents.append(oc_agent)    
             sleep(2)
             
-        updated_oc_agents = []
-        while len(updated_oc_agents) < len(oc_agents):
-            for oc_agent in oc_agents:
-                if (oc_agent not in updated_oc_agents) and \
-                        cls.check_status(nova_client, oc_agent):
-                    updated_oc_agent = cls.post_setup(nova_client, oc_agent)
-                    updated_oc_agents.append(updated_oc_agent)
-                else:
-                    sleep(10)
+        updated_oc_agents = cls.wait_for_oc_agents(\
+                oc_agents, nova_client, oc_server, network)
+                    
+        return updated_oc_agents
+#-------------------------------------------------------------------------------
+    @classmethod
+    def launch_cluster(cls, nova_client, network, num_of_oc_agents):
+        # Create OpenCenter Server 
+        oc_server = cls.launch_oc_server(nova_client, network)
+
+        # Wait for OpenCenter server HTTPS server to be up
+        oc_port = 443
+        updated_oc_server = \
+                cls.wait_for_oc_server(nova_client, oc_server, network, oc_port)
+
+        # Create opencenter agents
+        oc_agents = cls.launch_oc_agents(\
+                updated_oc_server, nova_client, network, num_of_oc_agents)
         
-        return updated_oc_server, updated_oc_agents
+        return updated_oc_server, oc_agents
 #-------------------------------------------------------------------------------
     @classmethod
     def build_a_cloud(cls, nova_client):
