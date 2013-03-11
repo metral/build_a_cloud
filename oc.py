@@ -91,7 +91,6 @@ class Adventure:
 #-------------------------------------------------------------------------------
     @classmethod
     def provision_chef_server(cls, node, url, user, password):
-
         # Execute 'install_chef_server' adventure
         adventure = cls.find("Install Chef Server", url, user, password)
         params = {
@@ -113,72 +112,6 @@ class Adventure:
                 # Monitor tasking of download_cookbooks
                 action = "download_cookbooks"
                 Task.wait_for_task(parent_id, node, action, url, user, password)
-        except Exception,e:
-            print Utils.logging(e)
-            return None
-
-        return node
-#-------------------------------------------------------------------------------
-    @classmethod
-    def provision_controller(cls, node, url, user, password):
-
-        infrastructure_node = Node.find("Infrastructure", url, user, password)
-        
-        # Execute controller fact
-        params = {
-                "node_id": ("%s" % node['id']),
-                "key": "parent_id",
-                "value": infrastructure_node['id']
-                }
-
-        result = Fact.create(url, user, password, params)
-
-        # result['task']['id'] is adventurate parent id
-        parent_id = int(result['task']['id'])
-
-        try:
-            if result['status'] == 202:
-                # Monitor tasking of install_chef client
-                action = "install_chef"
-                Task.wait_for_task(parent_id, node, action, url, user, password)
-
-                # Monitor tasking of running chef-client for 1st time
-                action = "run_chef"
-                Task.wait_for_task(parent_id + 2, node, action, \
-                        url, user, password)
-                
-                # Monitor tasking of running chef-client for 2nd time
-                # (post-install)
-                action = "run_chef"
-                Task.wait_for_task(parent_id + 4, node, action, \
-                        url, user, password)
-        except Exception,e:
-            print Utils.logging(e)
-            return None
-
-        return node
-#-------------------------------------------------------------------------------
-    @classmethod
-    def run_chef_client(cls, node, url, user, password):
-
-        # Execute chef client
-        adventure = cls.find("Run Chef", url, user, password)
-        params = {
-                "node": node['id'],
-                }
-
-        path = "/adventures/%s/execute" % adventure['id']
-        result = Utils.execute(path, url, user, password, params)
-
-        # result['task']['id'] is adventurate parent id
-        parent_id = int(result['task']['id'])
-
-        try:
-            if result['status'] == 202:
-                # Monitor tasking of run_chef
-                action = "run_chef"
-                Task.wait_for_task(parent_id, node, action, url, user, password)
-
         except Exception,e:
             print Utils.logging(e)
             return None
@@ -231,31 +164,82 @@ class Adventure:
             print Utils.logging(e)
 #-------------------------------------------------------------------------------
     @classmethod
-    def provision_chef_clients(cls, nodes, num_of_clients, url, user, password):
+    def provision_controller(cls, node, url, user, password):
+        infrastructure_node = Node.find("Infrastructure", url, user, password)
+        
+        # Execute controller fact
+        params = {
+                "node_id": ("%s" % node['id']),
+                "key": "parent_id",
+                "value": infrastructure_node['id']
+                }
+
+        result = Fact.create(url, user, password, params)
+
+        # result['task']['id'] is adventurate parent id
+        parent_id = int(result['task']['id'])
+
+        try:
+            if result['status'] == 202:
+                # Monitor tasking of install_chef client
+                action = "install_chef"
+                Task.wait_for_task(parent_id, node, action, url, user, password)
+
+                # Monitor tasking of running chef-client for 1st time
+                action = "run_chef"
+                Task.wait_for_task(parent_id + 2, node, action, \
+                        url, user, password)
+                
+                # Monitor tasking of running chef-client for 2nd time
+                # (post-install)
+                action = "run_chef"
+                Task.wait_for_task(parent_id + 4, node, action, \
+                        url, user, password)
+        except Exception,e:
+            print Utils.logging(e)
+            return None
+
+        return node
+#-------------------------------------------------------------------------------
+    @classmethod
+    def generic_adventure(cls, node, url, user, password, 
+            adventure_name, action):
+
+        # Execute the adventure
+        adventure = cls.find(adventure_name, url, user, password)
+        params = {
+                "node": node['id'],
+                }
+
+        path = "/adventures/%s/execute" % adventure['id']
+        result = Utils.execute(path, url, user, password, params)
+
+        # result['task']['id'] is adventurate parent id
+        parent_id = int(result['task']['id'])
+
+        try:
+            if result['status'] == 202:
+                # Monitor tasking of action
+                action = action
+                Task.wait_for_task(parent_id, node, action, url, user, password)
+
+        except Exception,e:
+            print Utils.logging(e)
+            return None
+
+        return node
+#-------------------------------------------------------------------------------
+    @classmethod
+    def provision_chef_clients(cls, nodes, url, user, password,
+            num_of_clients):
         provisioned_chef_clients = []
-        adventure = Adventure.find("Install Chef Client", url, user, password)
 
         for i in range(0, num_of_clients):
             node = nodes.pop(0)
-            params = {
-                    "node": node['id'],
-                    }
-
-            path = "/adventures/%s/execute" % adventure['id']
-            result = Utils.execute(path, url, user, password, params)
-
-            # result['task']['id'] is adventurate parent id
-            parent_id = int(result['task']['id'])
-
-            try:
-                if result['status'] == 202:
-                    # Monitor tasking of install_chef
-                    action = "install_chef"
-                    Task.wait_for_task(parent_id, node, action,
-                            url, user, password)
-                    provisioned_chef_clients.append(node)
-            except Exception,e:
-                print Utils.logging(e)
+            provisioned_node = cls.generic_adventure(\
+                    node, url, user, password, "Install Chef Client",
+                    "install_chef")
+            provisioned_chef_clients.append(provisioned_node)
 
         return provisioned_chef_clients
 #-------------------------------------------------------------------------------
@@ -329,6 +313,7 @@ class Node:
 #-------------------------------------------------------------------------------
 def provision_cluster(nova_client, oc_server, url, user, 
         password, num_of_oc_agents, cidr):
+
     # Get OpenCenter server node
     service_nodes_server = Node.find(oc_server.name, url, user, password)
     
@@ -348,6 +333,12 @@ def provision_cluster(nova_client, oc_server, url, user,
     #        'id': 5,
     #        'name': "bac-opencenter-agent-1362953768-66823662",
     #        }
+    
+    ##TODO: DELETE THIS!!! 
+    #controller = {
+    #        'id': 6,
+    #        }
+    #
 
     ## Create Nova Cluster
     print "*********** Create Nova Cluster:"
@@ -361,22 +352,34 @@ def provision_cluster(nova_client, oc_server, url, user,
     print controller['name']
 
     # Enable qemu in chef environment
-    print "*********** Updating Chef Environment"
+    print "*********** Updating Chef Environment to use Qemu instead of KVM"
     Node.make_chef_changes(chef_server_node)
-    
+
     # Run Chef Client on Controller
     print "*********** Running Chef Client on Controller"
-    Adventure.run_chef_client(controller, url, user, password)
+    Adventure.generic_adventure(\
+            controller, url, user, password, "Run Chef", "run_chef")
+    
+    # Run Upload Initial Glance Images on Controller
+    print "*********** Uploading Initial Glance Images on Controller"
+    Adventure.generic_adventure(controller, url, user, password, \
+            "Upload Initial Glance Images", "openstack_upload_images")
+
+    ## Provision Nova Compute
+    #print "*********** Nova Compute:"
+    #node = unprovisioned_nodes.pop(0)
+    #controller = Adventure.provision_compute(node, url, user, password)
+    #print controller['name']
 #-------------------------------------------------------------------------------
 #USER = "admin"
-#PASSWORD = "ExgfZHr4T5Yy"
-#SERVER_IPV4 = "166.78.100.53"
+#PASSWORD = "lofdjaK56U2U"
+#SERVER_IPV4 = "166.78.122.167"
 #URL ="https://%s:8443" % SERVER_IPV4
 #
 #cidr = "192.168.3.0/24"
-#class Foo():
-#    name = "bac-opencenter-server-1362771927-69840502"
-#oc_server = Foo()
+##class Foo():
+##    name = "bac-opencenter-server-1362771927-69840502"
+##oc_server = Foo()
 #
-#provision_cluster(oc_server, URL, USER, PASSWORD, 4, cidr)
+#provision_cluster(None, None, URL, USER, PASSWORD, 4, cidr)
 #-------------------------------------------------------------------------------
