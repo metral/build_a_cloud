@@ -41,14 +41,25 @@ class Utils:
         return output
 #-------------------------------------------------------------------------------
     @classmethod
-    def do_ssh_work(cls, public_ipv4):
+    def do_subprocess(cls, command):
         try:
-            command = \
-                    "ssh %s 'chmod +x /etc/prep.sh ; /etc/prep.sh'" % public_ipv4
             p = subprocess.Popen(command, stdout = subprocess.PIPE, shell=True)
             output, error = p.communicate()
+            return output
         except Exception,e:
             print str(e)
+            return None
+#-------------------------------------------------------------------------------
+    @classmethod
+    def find_server(cls, nova_client, server_name):
+        try:
+            servers = nova_client.servers.list()
+            for server in servers:
+                if server.name == server_name:
+                    return server
+        except Exception,e:
+            print cls.logging(e)
+            return None
 #-------------------------------------------------------------------------------
     @classmethod
     def print_server_status(cls, server):

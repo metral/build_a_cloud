@@ -187,7 +187,8 @@ class CloudServers():
 
         # Run payloads via SSH
         ipv4 = Utils.get_ipv4(updated_oc_server.addresses["public"])
-        Utils.do_ssh_work(ipv4)
+        command = "ssh %s 'chmod +x /etc/prep.sh ; /etc/prep.sh'" % ipv4
+        Utils.do_subprocess(command)
 
         # Wait for opencenter services to be ready, if required
         if oc_port: cls.wait_for_oc_service(updated_oc_server, oc_port)
@@ -344,7 +345,7 @@ class CloudServers():
         network = cls.create_network(nova_client, "bac", cidr)
 
         # Launch opencenter cluster
-        num_of_oc_agents = 3
+        num_of_oc_agents = 8
         oc_server, oc_agents = \
                 cls.launch_cluster(nova_client, network, num_of_oc_agents)
                 
@@ -361,7 +362,7 @@ class CloudServers():
         oc_server_ipv4 = Utils.get_ipv4(oc_server.addresses["public"])
         oc_url ="https://%s:8443" % oc_server_ipv4
         
-        oc.provision_cluster(oc_server, oc_url, oc_user, \
+        oc.provision_cluster(nova_client, oc_server, oc_url, oc_user, \
             oc_password, num_of_oc_agents, cidr)
         
 #-------------------------------------------------------------------------------
