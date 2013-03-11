@@ -159,6 +159,33 @@ class Adventure:
         return node
 #-------------------------------------------------------------------------------
     @classmethod
+    def run_chef_client(cls, node, url, user, password):
+
+        # Execute chef client
+        adventure = cls.find("Run Chef", url, user, password)
+        params = {
+                "node": node['id'],
+                }
+
+        path = "/adventures/%s/execute" % adventure['id']
+        result = Utils.execute(path, url, user, password, params)
+
+        # result['task']['id'] is adventurate parent id
+        parent_id = int(result['task']['id'])
+
+        try:
+            if result['status'] == 202:
+                # Monitor tasking of run_chef
+                action = "run_chef"
+                Task.wait_for_task(parent_id, node, action, url, user, password)
+
+        except Exception,e:
+            print Utils.logging(e)
+            return None
+
+        return node
+#-------------------------------------------------------------------------------
+    @classmethod
     def create_nova_cluster(cls, node, chef_server, url, user,
         password, cidr):
 
@@ -290,7 +317,18 @@ class Node:
 
         return unprovisioned_nodes
 #-------------------------------------------------------------------------------
-def provision_cluster(oc_server, url, user, password, num_of_oc_agents, cidr):
+    @classmethod
+    def make_chef_changes(cls, server):
+        try:
+            ipv4 = Utils.get_ipv4(server.addresses["public"])
+            command = "scp vm_scripts/update_chef.py %s:/root/ ;" \
+                    "ssh %s python update_chef.py" % (ipv4, ipv4)
+            print Utils.do_subprocess(command)
+        except Exception,e:
+            print Utils.logging(e)
+#-------------------------------------------------------------------------------
+def provision_cluster(nova_client, oc_server, url, user, 
+        password, num_of_oc_agents, cidr):
     # Get OpenCenter server node
     service_nodes_server = Node.find(oc_server.name, url, user, password)
     
@@ -301,11 +339,15 @@ def provision_cluster(oc_server, url, user, password, num_of_oc_agents, cidr):
     # Provision OC agent as Chef Server
     node = unprovisioned_nodes.pop(0)
     chef_server = Adventure.provision_chef_server(node, url, user, password)
+    chef_server_node = Utils.find_server(nova_client, chef_server['name'])
     print "*********** Chef-Server:"
     print chef_server['name']
     
-    #TODO: DELETE THIS!!! 
-    #chef_server = {'id': 5}
+    ##TODO: DELETE THIS!!! 
+    #chef_server = {
+    #        'id': 5,
+    #        'name': "bac-opencenter-agent-1362953768-66823662",
+    #        }
 
     ## Create Nova Cluster
     print "*********** Create Nova Cluster:"
@@ -317,6 +359,14 @@ def provision_cluster(oc_server, url, user, password, num_of_oc_agents, cidr):
     node = unprovisioned_nodes.pop(0)
     controller = Adventure.provision_controller(node, url, user, password)
     print controller['name']
+
+    # Enable qemu in chef environment
+    print "*********** Updating Chef Environment"
+    Node.make_chef_changes(chef_server_node)
+    
+    # Run Chef Client on Controller
+    print "*********** Running Chef Client on Controller"
+    Adventure.run_chef_client(controller, url, user, password)
 #-------------------------------------------------------------------------------
 #USER = "admin"
 #PASSWORD = "ExgfZHr4T5Yy"
