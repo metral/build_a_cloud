@@ -36,14 +36,15 @@ class Task:
                 else:
                     if (task['node_id'] == node['id']) and \
                         (task['action'] == action) and \
-                        (task['parent_id'] == parent_id):
+                        (task['parent_id'] >= parent_id):
                         tasked = True
                         task_id = task['id']
                         state = task['state']
-            print "Waiting for '%s' to be tasked ..." % (action)
+
+            print "Waiting for '%s' to task ... " % (action)
             sleep(2)
         while(state != 'done' and task_id):
-            print "Waiting for '%s' to complete ..." % (action)
+            print "'%s' is running ..." % (action)
             path = "/tasks/%s" % task_id
             updated_json = Utils.oc_api(url + path, user, password)
             updated_task = Utils.extract_oc_object_type(updated_json, "task")
@@ -135,7 +136,7 @@ class Adventure:
                             "ns": {
                                 "chef_server": chef_server['id'],
                                 "cluster_name": "NovaCluster",
-                                "nova_public_if": "eth2",
+                                "nova_public_if": "eth0",
                                 "keystone_admin_pw": password,
                                 "nova_dmz_cidr": "172.16.0.0/24",
                                 "nova_vm_fixed_range": "172.28.48.0/24",
@@ -164,37 +165,29 @@ class Adventure:
             print Utils.logging(e)
 #-------------------------------------------------------------------------------
     @classmethod
-    def provision_controller(cls, node, url, user, password):
-        infrastructure_node = Node.find("Infrastructure", url, user, password)
+    def provision_nova_node(cls, node_name, node, url, user, password):
+        nova_node = Node.find(node_name, url, user, password)
         
-        # Execute controller fact
+        # Execute fact
         params = {
                 "node_id": ("%s" % node['id']),
                 "key": "parent_id",
-                "value": infrastructure_node['id']
+                "value": nova_node['id']
                 }
 
         result = Fact.create(url, user, password, params)
 
         # result['task']['id'] is adventurate parent id
         parent_id = int(result['task']['id'])
-
         try:
             if result['status'] == 202:
                 # Monitor tasking of install_chef client
                 action = "install_chef"
                 Task.wait_for_task(parent_id, node, action, url, user, password)
 
-                # Monitor tasking of running chef-client for 1st time
+                # Monitor tasking of running chef-client
                 action = "run_chef"
-                Task.wait_for_task(parent_id + 2, node, action, \
-                        url, user, password)
-                
-                # Monitor tasking of running chef-client for 2nd time
-                # (post-install)
-                action = "run_chef"
-                Task.wait_for_task(parent_id + 4, node, action, \
-                        url, user, password)
+                Task.wait_for_task(parent_id, node, action, url, user, password)
         except Exception,e:
             print Utils.logging(e)
             return None
@@ -242,10 +235,6 @@ class Adventure:
             provisioned_chef_clients.append(provisioned_node)
 
         return provisioned_chef_clients
-#-------------------------------------------------------------------------------
-    @classmethod
-    def provision_compute(cls,node):
-        None
 
 ################################################################################
 
@@ -303,10 +292,28 @@ class Node:
 #-------------------------------------------------------------------------------
     @classmethod
     def make_chef_changes(cls, server):
+        #try:
+        #    ipv4 = Utils.get_ipv4(server.addresses["public"])
+        #    command = "scp vm_scripts/update_chef.py %s:/root/ ;" \
+        #            "ssh %s python update_chef.py" % (ipv4, ipv4)
+        #    print Utils.do_subprocess(command)
+        #except Exception,e:
+        #    print Utils.logging(e)
+        
         try:
             ipv4 = Utils.get_ipv4(server.addresses["public"])
-            command = "scp vm_scripts/update_chef.py %s:/root/ ;" \
-                    "ssh %s python update_chef.py" % (ipv4, ipv4)
+            command = "scp vm_scripts/update_chef.sh %s:/root/ ;" \
+                    "ssh %s bash /root/update_chef.sh" % (ipv4, ipv4)
+            print Utils.do_subprocess(command)
+        except Exception,e:
+            print Utils.logging(e)
+#-------------------------------------------------------------------------------
+    @classmethod
+    def make_nova_changes(cls, server):
+        try:
+            ipv4 = Utils.get_ipv4(server.addresses["public"])
+            command = "scp vm_scripts/nova.sh %s:/root/ ;" \
+                    "ssh %s bash /root/nova.sh" % (ipv4, ipv4)
             print Utils.do_subprocess(command)
         except Exception,e:
             print Utils.logging(e)
@@ -314,8 +321,14 @@ class Node:
 def provision_cluster(nova_client, oc_server, url, user, 
         password, num_of_oc_agents, cidr):
 
-    # Get OpenCenter server node
+    #Get OpenCenter server node
     service_nodes_server = Node.find(oc_server.name, url, user, password)
+    
+    # Enable qemu in chef environment template file
+    print "*********** Updating Chef Environment Template to use Qemu"
+    service_nodes_server_node = Utils.find_server(\
+            nova_client, service_nodes_server['name'])
+    Node.make_chef_changes(service_nodes_server_node)
     
     # Wait for all unprovisioned OC agent nodes to be up & talking to OC server
     unprovisioned_nodes = Node.wait_for_agents(\
@@ -331,7 +344,7 @@ def provision_cluster(nova_client, oc_server, url, user,
     ##TODO: DELETE THIS!!! 
     #chef_server = {
     #        'id': 5,
-    #        'name': "bac-opencenter-agent-1362953768-66823662",
+    #        'name': "bac-opencenter-agent-1363036620-85805073",
     #        }
     
     ##TODO: DELETE THIS!!! 
@@ -340,7 +353,7 @@ def provision_cluster(nova_client, oc_server, url, user,
     #        }
     #
 
-    ## Create Nova Cluster
+    # Create Nova Cluster
     print "*********** Create Nova Cluster:"
     Adventure.create_nova_cluster(service_nodes_server, chef_server, url, \
             user, password, cidr)
@@ -348,38 +361,45 @@ def provision_cluster(nova_client, oc_server, url, user,
     # Provision Nova Controller
     print "*********** Nova Controller:"
     node = unprovisioned_nodes.pop(0)
-    controller = Adventure.provision_controller(node, url, user, password)
+    controller = Adventure.provision_nova_node(\
+            "Infrastructure", node, url, user, password)
     print controller['name']
 
-    # Enable qemu in chef environment
-    print "*********** Updating Chef Environment to use Qemu instead of KVM"
-    Node.make_chef_changes(chef_server_node)
-
     # Run Chef Client on Controller
-    print "*********** Running Chef Client on Controller"
-    Adventure.generic_adventure(\
-            controller, url, user, password, "Run Chef", "run_chef")
+    #print "*********** Running Chef Client on Controller"
+    #Adventure.generic_adventure(\
+    #        controller, url, user, password, "Run Chef", "run_chef")
     
     # Run Upload Initial Glance Images on Controller
     print "*********** Uploading Initial Glance Images on Controller"
     Adventure.generic_adventure(controller, url, user, password, \
             "Upload Initial Glance Images", "openstack_upload_images")
 
-    ## Provision Nova Compute
-    #print "*********** Nova Compute:"
-    #node = unprovisioned_nodes.pop(0)
-    #controller = Adventure.provision_compute(node, url, user, password)
-    #print controller['name']
+    print "*********** Making Nova Changes on Controller:"
+    controller_node = Utils.find_server(nova_client, controller['name'])
+    Node.make_nova_changes(controller_node)
+    
+    # Provision Nova Compute
+    print "*********** Nova Compute:"
+    num_of_computes = len(unprovisioned_nodes)
+    computes = []
+    for i in range(0, num_of_computes):
+        node = unprovisioned_nodes.pop(0)
+        compute = Adventure.provision_nova_node(\
+                "AZ nova", node, url, user, password)
+        computes.append(compute)
+        print compute['name']
+    
 #-------------------------------------------------------------------------------
 #USER = "admin"
-#PASSWORD = "lofdjaK56U2U"
-#SERVER_IPV4 = "166.78.122.167"
+#PASSWORD = "u3KPe9YDF59n"
+#SERVER_IPV4 = "166.78.124.119"
 #URL ="https://%s:8443" % SERVER_IPV4
 #
 #cidr = "192.168.3.0/24"
-##class Foo():
-##    name = "bac-opencenter-server-1362771927-69840502"
-##oc_server = Foo()
+#class Foo():
+#    name = "bac-opencenter-server-1363035526-75498007"
+#oc_server = Foo()
 #
-#provision_cluster(None, None, URL, USER, PASSWORD, 4, cidr)
+#provision_cluster(oc_server, None, URL, USER, PASSWORD, 5, cidr)
 #-------------------------------------------------------------------------------

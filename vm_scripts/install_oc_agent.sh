@@ -7,3 +7,5 @@ rm /etc/prep.sh
  > /etc/rc.local
 rm -rf /root/*
 #rm -rf /root/.ssh
+
+echo "if [ -f /root/openrc ]; then source /root/openrc ; fi" >> /root/.bashrc
