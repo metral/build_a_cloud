@@ -51,7 +51,22 @@ class Task:
             if updated_task:
                 state = updated_task['state']
             sleep(5)
-
+    
+#-------------------------------------------------------------------------------
+    @classmethod
+    def wait_for_remaining_tasks(cls, url, user, password):
+        
+        restart_loop = True
+        
+        while restart_loop:
+            tasks_json = Utils.oc_api(url + "/tasks/", user, password)
+            tasks = Utils.extract_oc_object_type(tasks_json, "tasks")
+            restart_loop = False
+            for task in tasks:
+                if task['state'] == "running":
+                    restart_loop = True
+                    break
+#-------------------------------------------------------------------------------
 ################################################################################
             
 class Fact:
@@ -390,10 +405,13 @@ def provision_cluster(nova_client, oc_server, url, user,
         computes.append(compute)
         print compute['name']
     
+    print "*********** Waiting for remaining running tasks ..."
+    Task.wait_for_remaining_tasks(url, user, password)
+    
 #-------------------------------------------------------------------------------
 #USER = "admin"
-#PASSWORD = "u3KPe9YDF59n"
-#SERVER_IPV4 = "166.78.124.119"
+#PASSWORD = "DKlq20bAVCyF"
+#SERVER_IPV4 = "166.78.109.227"
 #URL ="https://%s:8443" % SERVER_IPV4
 #
 #cidr = "192.168.3.0/24"
