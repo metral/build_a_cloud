@@ -62,7 +62,7 @@ class CloudServers():
     def check_quotas(cls, nova_client):
         # Check RAM & CloudNetwork Quotas
 
-        ram_needed = 32768  # 32GB= 8GB x 4 = server, chef, controller, compute
+        ram_needed = 40960  # 40GB= 8GB x 5 = server, chef, controller, 2xcomp
         max_ram = Utils.get_limit(nova_client, "maxTotalRAMSize")
 
         # default rax max ram - 65GB
