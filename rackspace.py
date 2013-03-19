@@ -61,7 +61,6 @@ class CloudServers():
     @classmethod
     def check_quotas(cls, nova_client):
         # Check RAM & CloudNetwork Quotas
-
         ram_needed = 40960  # 40GB= 8GB x 5 = server, chef, controller, 2xcomp
         max_ram = Utils.get_limit(nova_client, "maxTotalRAMSize")
 
@@ -108,6 +107,7 @@ class CloudServers():
 
             print "\nRetrying in 10 secs..."
             sleep(10)
+            
 #-------------------------------------------------------------------------------
     @classmethod
     def wait_for_oc_service(cls, server, oc_port):
@@ -383,14 +383,12 @@ class CloudServers():
     def list_networks(cls, nova_client):
         networks = None
 
-        while networks is None:
-            try:
-                network_manager = rax_network.NetworkManager(nova_client)
-                networks = network_manager.list()
-            except Exception,e:
-                print str(e)
-                print "Retrying in 5 secs..."
-                sleep(5)
+        try:
+            network_manager = rax_network.NetworkManager(nova_client)
+            networks = network_manager.list()
+        except Exception,e:
+            pass
+        
         return networks
 #-------------------------------------------------------------------------------
     @classmethod
