@@ -101,8 +101,16 @@ class Utils:
     @classmethod
     def get_limit(cls, nova_client, limit_name):
         total_used = 0
-        limits = nova_client.limits.get()
+        limits = None
 
+        while limits is None:
+            try:
+                limits = nova_client.limits.get()
+            except Exception,e:
+                print cls.logging(e)
+                print "Retrying in 5 secs..."
+                sleep(5)
+                
         for limit in limits.absolute:
             if limit.name == limit_name:
                 total_used = limit.value
