@@ -436,8 +436,9 @@ class CloudServers():
     def remove_user_networks(cls, nova_client):
         networks = cls.list_networks(nova_client)
 
-        for network in networks:
-            if network.id not in default_nics:
-                cls.delete_network(nova_client, network)
+        if networks:
+            for network in networks:
+                if network.id not in default_nics:
+                    cls.delete_network(nova_client, network)
 #-------------------------------------------------------------------------------
 #===============================================================================
