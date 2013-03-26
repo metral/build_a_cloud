@@ -25,39 +25,49 @@ class Task:
             queued_task_id = None):
         tasked = False
         state = None
-        task_id = None
+        task = None
 
         logger.info("Waiting for '%s' to task ... " % (action))
         while not tasked:
             tasks_json = Utils.oc_api(url + "/tasks/", user, password)
             tasks = Utils.extract_oc_object_type(tasks_json, "tasks")
-            for task in tasks:
+            for current_task in tasks:
                 if action == "adventurate":
-                    if task['id'] == queued_task_id:
+                    if current_task['id'] == queued_task_id:
                         tasked = True
-                        task_id = task['id']
-                        state = task['state']
+                        task = current_task
+                        state = current_task['state']
                 else:
-                    if (task['node_id'] == node['id']) and \
-                        (task['action'] == action) and \
-                        (task['parent_id'] >= parent_id):
+                    if (current_task['node_id'] == node['id']) and \
+                        (current_task['action'] == action) and \
+                        (current_task['parent_id'] >= parent_id):
                         tasked = True
-                        task_id = task['id']
-                        state = task['state']
+                        task = current_task
+                        state = current_task['state']
 
             logger.debug("Still waiting for '%s' to task ... " % (action))
             sleep(2)
 
         logger.info("'%s' is running ..." % (action))
-        while(state != 'done' and task_id):
+        while(state != 'done' and task['id']):
             logger.debug("'%s' is still running ..." % (action))
-            path = "/tasks/%s" % task_id
+            path = "/tasks/%s" % task['id']
             updated_json = Utils.oc_api(url + path, user, password)
             updated_task = Utils.extract_oc_object_type(updated_json, "task")
             if updated_task:
                 state = updated_task['state']
             sleep(5)
-    
+            
+        # Check if task failed after done
+        result_str = task['result']['result_str'].lower()
+        result_code = int(task['result']['result_code'])
+        
+        if result_str == 'failure' or result_code != 0:
+            logger.error("'%s' failed " % (action))
+            return False
+        
+        logger.info("'%s' succeeded " % (action))
+        return True
 #-------------------------------------------------------------------------------
     @classmethod
     def wait_for_remaining_tasks(cls, url, user, password):
@@ -112,7 +122,7 @@ class Adventure:
         return None
 #-------------------------------------------------------------------------------
     @classmethod
-    def provision_chef_server(cls, node, url, user, password):
+    def execute_chef_server_adventure(cls, node, url, user, password):
         # Execute 'install_chef_server' adventure
         adventure = cls.find("Install Chef Server", url, user, password)
         params = {
@@ -121,7 +131,14 @@ class Adventure:
 
         path = "/adventures/%s/execute" % adventure['id']
         result = Utils.execute(path, url, user, password, params)
-
+        
+        return result
+#-------------------------------------------------------------------------------
+    @classmethod
+    def provision_chef_server(cls, node, url, user, password):
+        
+        result = cls.execute_chef_server_adventure(node, url, user, password)
+        
         # result['task']['id'] is adventurate parent id
         parent_id = int(result['task']['id'])
 
@@ -129,11 +146,17 @@ class Adventure:
             if result['status'] == 202:
                 # Monitor tasking of install_chef_server
                 action = "install_chef_server"
-                Task.wait_for_task(parent_id, node, action, url, user, password)
+                task_result = Task.wait_for_task(\
+                        parent_id, node, action, url, user, password)
+                if not task_result:
+                    logger.debug("Retrying '%s' in 10 secs..." % (action))
+                    sleep(10)
+                    return cls.provision_chef_server(node, url, user, password)
 
                 # Monitor tasking of download_cookbooks
                 action = "download_cookbooks"
-                Task.wait_for_task(parent_id, node, action, url, user, password)
+                task_result = Task.wait_for_task(\
+                        parent_id, node, action, url, user, password)
         except Exception,e:
             logger.error(str(e))
             return None
