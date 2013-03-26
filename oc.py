@@ -2,6 +2,9 @@
 from time import sleep
 from utils import Utils
 import json
+import logging
+#-------------------------------------------------------------------------------
+logger = logging.getLogger('build_a_cloud')
 #-------------------------------------------------------------------------------
 ################################################################################
 class Task:
@@ -24,6 +27,7 @@ class Task:
         state = None
         task_id = None
 
+        logger.info("Waiting for '%s' to task ... " % (action))
         while not tasked:
             tasks_json = Utils.oc_api(url + "/tasks/", user, password)
             tasks = Utils.extract_oc_object_type(tasks_json, "tasks")
@@ -41,10 +45,12 @@ class Task:
                         task_id = task['id']
                         state = task['state']
 
-            print "Waiting for '%s' to task ... " % (action)
+            logger.debug("Still waiting for '%s' to task ... " % (action))
             sleep(2)
+
+        logger.info("'%s' is running ..." % (action))
         while(state != 'done' and task_id):
-            print "'%s' is running ..." % (action)
+            logger.debug("'%s' is still running ..." % (action))
             path = "/tasks/%s" % task_id
             updated_json = Utils.oc_api(url + path, user, password)
             updated_task = Utils.extract_oc_object_type(updated_json, "task")
@@ -129,7 +135,7 @@ class Adventure:
                 action = "download_cookbooks"
                 Task.wait_for_task(parent_id, node, action, url, user, password)
         except Exception,e:
-            print Utils.logging(e)
+            logger.error(str(e))
             return None
 
         return node
@@ -177,7 +183,7 @@ class Adventure:
                 Task.wait_for_task(None, None, action, url, \
                         user, password, task_id)
         except Exception,e:
-            print Utils.logging(e)
+            logger.error(str(e))
 #-------------------------------------------------------------------------------
     @classmethod
     def provision_nova_node(cls, node_name, node, url, user, password):
@@ -204,7 +210,7 @@ class Adventure:
                 action = "run_chef"
                 Task.wait_for_task(parent_id, node, action, url, user, password)
         except Exception,e:
-            print Utils.logging(e)
+            logger.error(str(e))
             return None
 
         return node
@@ -232,7 +238,7 @@ class Adventure:
                 Task.wait_for_task(parent_id, node, action, url, user, password)
 
         except Exception,e:
-            print Utils.logging(e)
+            logger.error(str(e))
             return None
 
         return node
@@ -271,7 +277,7 @@ class Node:
 
             return unprovisioned_nodes
         except Exception,e:
-            print Utils.logging(e)
+            logger.error(str(e))
             return None
 #-------------------------------------------------------------------------------
     @classmethod
@@ -295,12 +301,14 @@ class Node:
     def wait_for_agents(cls, total_agents, url, user, password):
         unprovisioned_nodes = []
 
+        logger.info("Waiting for all unprovisioned/available nodes...")
         while len(unprovisioned_nodes) < total_agents:
             nodes = cls.get_nodes(url, user, password)
             unprovisioned_nodes = cls.get_unprovisioned(nodes, \
                     url, user, password)
             if len(unprovisioned_nodes) < total_agents:
-                print "Waiting for all unprovisioned/available nodes..."
+                msg = "Still waiting for all unprovisioned/available nodes..."
+                logger.debug(msg)
                 sleep(10)
 
         return unprovisioned_nodes
@@ -313,25 +321,25 @@ class Node:
         #            "ssh %s python update_chef.py" % (ipv4, ipv4)
         #    print Utils.do_subprocess(command)
         #except Exception,e:
-        #    print Utils.logging(e)
+        #    print logger.error(str(e))
         
         try:
             ipv4 = Utils.get_ipv4(server.addresses["public"])
             command = "scp vm_scripts/update_chef.sh %s:/root/ ;" \
-                    "ssh %s bash /root/update_chef.sh" % (ipv4, ipv4)
-            print Utils.do_subprocess(command)
+                    "ssh %s /root/update_chef.sh > /dev/null" % (ipv4, ipv4)
+            logger.debug(Utils.do_subprocess(command))
         except Exception,e:
-            print Utils.logging(e)
+            logger.error(str(e))
 #-------------------------------------------------------------------------------
     @classmethod
     def make_nova_changes(cls, server):
         try:
             ipv4 = Utils.get_ipv4(server.addresses["public"])
             command = "scp vm_scripts/nova.sh %s:/root/ ;" \
-                    "ssh %s bash /root/nova.sh" % (ipv4, ipv4)
-            print Utils.do_subprocess(command)
+                    "ssh %s /root/nova.sh > /dev/null" % (ipv4, ipv4)
+            logger.debug(Utils.do_subprocess(command))
         except Exception,e:
-            print Utils.logging(e)
+            logger.error(str(e))
 #-------------------------------------------------------------------------------
 def provision_cluster(nova_client, oc_server, url, user, 
         password, num_of_oc_agents, cidr):
@@ -340,7 +348,7 @@ def provision_cluster(nova_client, oc_server, url, user,
     service_nodes_server = Node.find(oc_server.name, url, user, password)
     
     # Enable qemu in chef environment template file
-    print "*********** Updating Chef Environment Template to use Qemu"
+    logger.info("Updating Chef Environment Template to use Qemu")
     service_nodes_server_node = Utils.find_server(\
             nova_client, service_nodes_server['name'])
     Node.make_chef_changes(service_nodes_server_node)
@@ -353,8 +361,8 @@ def provision_cluster(nova_client, oc_server, url, user,
     node = unprovisioned_nodes.pop(0)
     chef_server = Adventure.provision_chef_server(node, url, user, password)
     chef_server_node = Utils.find_server(nova_client, chef_server['name'])
-    print "*********** Chef-Server:"
-    print chef_server['name']
+    logger.info("Chef-Server:")
+    logger.info(chef_server['name'])
     
     ##TODO: DELETE THIS!!! 
     #chef_server = {
@@ -369,33 +377,28 @@ def provision_cluster(nova_client, oc_server, url, user,
     #
 
     # Create Nova Cluster
-    print "*********** Create Nova Cluster:"
+    logger.info("Create Nova Cluster:")
     Adventure.create_nova_cluster(service_nodes_server, chef_server, url, \
             user, password, cidr)
     
     # Provision Nova Controller
-    print "*********** Nova Controller:"
+    logger.info("Nova Controller:")
     node = unprovisioned_nodes.pop(0)
     controller = Adventure.provision_nova_node(\
             "Infrastructure", node, url, user, password)
-    print controller['name']
+    logger.info(controller['name'])
 
-    # Run Chef Client on Controller
-    #print "*********** Running Chef Client on Controller"
-    #Adventure.generic_adventure(\
-    #        controller, url, user, password, "Run Chef", "run_chef")
-    
     # Run Upload Initial Glance Images on Controller
-    print "*********** Uploading Initial Glance Images on Controller"
+    logger.info("Uploading Initial Glance Images on Controller")
     Adventure.generic_adventure(controller, url, user, password, \
             "Upload Initial Glance Images", "openstack_upload_images")
 
-    print "*********** Making Nova Changes on Controller:"
+    logger.info("Making Nova Changes on Controller:")
     controller_node = Utils.find_server(nova_client, controller['name'])
     Node.make_nova_changes(controller_node)
     
     # Provision Nova Compute
-    print "*********** Nova Compute:"
+    logger.info("Nova Compute:")
     num_of_computes = len(unprovisioned_nodes)
     computes = []
     for i in range(0, num_of_computes):
@@ -403,9 +406,9 @@ def provision_cluster(nova_client, oc_server, url, user,
         compute = Adventure.provision_nova_node(\
                 "AZ nova", node, url, user, password)
         computes.append(compute)
-        print compute['name']
+        logger.info(compute['name'])
     
-    print "*********** Waiting for remaining running tasks ..."
+    logger.info("Waiting for remaining running tasks ...")
     Task.wait_for_remaining_tasks(url, user, password)
     
 #-------------------------------------------------------------------------------

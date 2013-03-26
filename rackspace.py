@@ -1,20 +1,40 @@
 #===============================================================================
 import os_networksv2_python_novaclient_ext as rax_network
 from novaclient.v1_1 import client as python_novaclient
-from time import sleep
-from utils import Utils
-import oc
+from time import time, sleep
 import sys
+import logging
+import logging_colorer
 #-------------------------------------------------------------------------------
 default_nics = [
         "00000000-0000-0000-0000-000000000000",     # Public
         "11111111-1111-1111-1111-111111111111"      # Private
         ]
 #-------------------------------------------------------------------------------
+
+logger = logging.getLogger("build_a_cloud") 
+logger.setLevel(logging.DEBUG)
+
+timestamp = str(int(time()))
+filename = "%s.log" % timestamp
+filepath = "/".join(["logs", filename]) 
+fh = logging.FileHandler(filepath)
+
+formatter = logging.Formatter('[%(asctime)s] ' \
+        '- %(pathname)s:%(funcName)s:%(lineno)d - %(levelname)s ' \
+        '- %(message)s','%Y-%m-%d %H:%M:%S')
+
+fh.setFormatter(formatter)
+logger.addHandler(fh)
+
+from utils import Utils
+import oc
+#-------------------------------------------------------------------------------
 # Abstract the usage of Rackspace CloudServers functionality
 #-------------------------------------------------------------------------------
 class CloudServers():
     nova_client = python_novaclient.Client("","","","")
+    
 
     def __init__(self, *args, **kwargs):
         self.nova_client = kwargs.pop('nova_client', None)
@@ -36,30 +56,43 @@ class CloudServers():
     def create_server(cls, nova_client, name, network_id, data):
         image = "5cebb13a-f783-4f8c-8058-c4182c724ccd"      # Ubuntu 12.04
         flavor = 6      # 8GB
+        server = None
         
-        server = nova_client.servers.create(
-                name = name,
-                image = image,
-                flavor = flavor,
-                nics = [
-                    {"net-id": default_nics[0]},
-                    {"net-id": default_nics[1]},
-                    {"net-id": network_id},
-                    ],
-                files = {
-                    "/root/.ssh/authorized_keys": \
-                        Utils.read_data("/root/.ssh/id_rsa.pub"),
-                    "/etc/prep.sh": Utils.read_data("vm_scripts/prep.sh"),
-                    "/root/upgrade.sh": \
-                        Utils.read_data("vm_scripts/upgrade.sh"),
-                    "/root/install_oc.sh": data,
-                    }
-                )
-        print "Scheduled server creation: %s | %s" % (server.id, server.name)
+        while server is None:
+            try:
+                server = nova_client.servers.create(
+                        name = name,
+                        image = image,
+                        flavor = flavor,
+                        nics = [
+                            {"net-id": default_nics[0]},
+                            {"net-id": default_nics[1]},
+                            {"net-id": network_id},
+                            ],
+                        files = {
+                            "/root/.ssh/authorized_keys": \
+                                Utils.read_data("/root/.ssh/id_rsa.pub"),
+                            "/etc/prep.sh": \
+                                Utils.read_data("vm_scripts/prep.sh"),
+                            "/root/upgrade.sh": \
+                                Utils.read_data("vm_scripts/upgrade.sh"),
+                            "/root/install_oc.sh": data,
+                            }
+                        )
+                
+                msg = "Scheduled server creation: %s | %s" % \
+                        (server.id, server.name)
+                logger.info(msg)
+            except Exception,e:
+                logger.error(str(e))
+                logger.error("Retrying in 10 secs...")
+                sleep(10)
         return server
 #-------------------------------------------------------------------------------
     @classmethod
     def check_quotas(cls, nova_client):
+        logger.info("Checking quotas started")
+        
         # Check RAM & CloudNetwork Quotas
         ram_needed = 40960  # 40GB= 8GB x 5 = server, chef, controller, 2xcomp
         max_ram = Utils.get_limit(nova_client, "maxTotalRAMSize")
@@ -85,12 +118,16 @@ class CloudServers():
 
         while (not enough_ram) or (not enough_networks):
             if not enough_ram:
-                print "\nQuota exceeded: not enough RAM"
-                print "RAM Needed: %s\tRAM Used: %s" % (ram_needed, ram_used)
+                msg = "Quota exceeded: not enough RAM"
+                logger.error(msg)
+                msg = "RAM Needed: %s\tRAM Used: %s" % (ram_needed, ram_used)
+                logger.error(msg)
             if not enough_networks:
-                print "\nQuota exceeded: too many networks"
-                print "Networks Needed: %s\tNetworks Used: %s" % \
+                msg = "Quota exceeded: too many networks"
+                logger.error(msg)
+                msg = "Networks Needed: %s\tNetworks Used: %s" % \
                         (networks_needed, networks_used)
+                logger.error(msg)
 
             enough_ram, ram_used = Utils.has_enough(
                     nova_client,
@@ -105,28 +142,35 @@ class CloudServers():
                     max_networks
                     )
 
-            print "\nRetrying in 10 secs..."
+            logger.debug("Retrying in 10 secs...")
             sleep(10)
+        
+        logger.info("Checking quotas finished")
             
 #-------------------------------------------------------------------------------
     @classmethod
     def wait_for_oc_service(cls, server, oc_port):
         try:
             ipv4 = Utils.get_ipv4(server.addresses["public"])
+            msg = "Waiting for OpenCenter service to be up: %s" % server.name
+            logger.info(msg)
             
             while (not Utils.port_is_open(ipv4, oc_port)):
-                print "\nWaiting for OpenCenter service to be up:", server.name
+                msg = "Still waiting for OpenCenter service to be up: %s" \
+                        % server.name
+                logger.debug(msg)
                 sleep(10)
-            print "OpenCenter Service Ready on:", server.name
+            msg = "OpenCenter Service Ready on: %s" % server.name
+            logger.info(msg)
         except Exception,e:
-            print Utils.logging(e)
+            logger.error(msg)
 #-------------------------------------------------------------------------------
     @classmethod
     def delete_server(cls, server):
         try:
             server.delete()
         except Exception,e:
-            print Utils.logging(e)
+            logger.error(str(e))
 #-------------------------------------------------------------------------------
     @classmethod
     def update_server(cls, nova_client, server):
@@ -134,7 +178,7 @@ class CloudServers():
             updated_server = nova_client.servers.get(server.id)
             return updated_server
         except Exception,e:
-            print Utils.logging(e)
+            logger.error(str(e))
             return None
 #-------------------------------------------------------------------------------
     @classmethod
@@ -142,7 +186,7 @@ class CloudServers():
         try:
             updated_oc_server.adminPass = oc_server.adminPass
         except Exception,e:
-            print Utils.logging(e)
+            logger.error(str(e))
         return updated_oc_server
 #-------------------------------------------------------------------------------
     @classmethod
@@ -155,9 +199,9 @@ class CloudServers():
 #-------------------------------------------------------------------------------
     @classmethod
     def check_status(cls, nova_client, server):
-        updated_server = cls.update_server(nova_client, server)
-        
         try:
+            updated_server = cls.update_server(nova_client, server)
+
             if not updated_server:
                 return None
             elif updated_server.status == "ERROR":
@@ -169,7 +213,7 @@ class CloudServers():
                 Utils.print_server_status(updated_server)
                 return True
         except Exception,e:
-            print Utils.logging(e)
+            logger.error(str(e))
             return None
 #-------------------------------------------------------------------------------
     @classmethod
@@ -196,6 +240,22 @@ class CloudServers():
         return updated_oc_server
 #-------------------------------------------------------------------------------
     @classmethod
+    def launch_oc_server(cls, nova_client, network):
+        name = Utils.generate_unique_name("bac-opencenter-server")
+        
+        fp = "vm_scripts/install_oc_server.sh"
+        data = Utils.read_data(fp)
+        oc_password = Utils.generate_password()
+        data = data.replace("PASSWORD", oc_password)
+
+        # Create OpenCenter Server
+        oc_server = None
+        oc_server = cls.create_server(nova_client, name, network.id, data)
+        oc_server.oc_password = oc_password
+        
+        return oc_server
+#-------------------------------------------------------------------------------
+    @classmethod
     def wait_for_oc_server(cls, nova_client, oc_server, 
             network, oc_port = None):
 
@@ -209,8 +269,9 @@ class CloudServers():
                 updated_oc_server = \
                         cls.update_server(nova_client, updated_oc_server)
             elif status is None:
-                print "\nServer Error (Server): Deleting %s" \
+                msg = "Server Error (Server): Deleting %s" \
                         % updated_oc_server.name
+                logger.info(msg)
                 cls.delete_server(updated_oc_server)
                 sleep(10)
                 updated_oc_server = cls.launch_oc_server(nova_client, network)
@@ -229,25 +290,9 @@ class CloudServers():
             updated_oc_server = cls.launch_oc_server(nova_client, network)
             oc_port = 443
             updated_oc_server = cls.wait_for_oc_server(\
-                    nova_client, oc_server, network, oc_port)
+                    nova_client, updated_oc_server, network, oc_port)
         
         return updated_oc_server
-#-------------------------------------------------------------------------------
-    @classmethod
-    def launch_oc_server(cls, nova_client, network):
-        name = Utils.generate_unique_name("bac-opencenter-server")
-        
-        fp = "vm_scripts/install_oc_server.sh"
-        data = Utils.read_data(fp)
-        oc_password = Utils.generate_password()
-        data = data.replace("PASSWORD", oc_password)
-
-        # Create OpenCenter Server
-        oc_server = None
-        oc_server = cls.create_server(nova_client, name, network.id, data)
-        oc_server.oc_password = oc_password
-        
-        return oc_server
 #-------------------------------------------------------------------------------
     @classmethod
     def wait_for_oc_agents(cls, oc_agents, nova_client, oc_server, network):
@@ -267,8 +312,9 @@ class CloudServers():
                                     cls.post_setup(nova_client, oc_agent)
                             updated_oc_agents.append(updated_oc_agent)
                         else:
-                            print "\nServer Error (Agent Net): Deleting %s" \
+                            msg = "Server Error (Agent Net): Deleting %s" \
                                     % oc_agent.name
+                            logger.error(msg)
                             cls.delete_server(oc_agent)
                             sleep(10)
                             oc_agent = cls.launch_oc_agent(\
@@ -277,7 +323,8 @@ class CloudServers():
                 elif status == False:
                     sleep(10)
                 elif status is None:
-                    print "\nServer Error (Agent): Deleting %s", oc_agent.name
+                    msg = "Server Error (Agent): Deleting %s" % oc_agent.name
+                    logger.error(msg)
                     cls.delete_server(oc_agent)
                     sleep(10)
                     oc_agent = cls.launch_oc_agent(\
@@ -334,6 +381,8 @@ class CloudServers():
 #-------------------------------------------------------------------------------
     @classmethod
     def build_a_cloud(cls, nova_client):
+        logger.info("Build A Cloud started")
+
         # Dev Cleanup
         cls.remove_user_networks(nova_client)
 
@@ -344,19 +393,17 @@ class CloudServers():
         cidr = "192.168.3.0/24"
         network = cls.create_network(nova_client, "bac", cidr)
 
-        # Launch opencenter cluster
+        ## Launch opencenter cluster
         num_of_oc_agents = 4
         oc_server, oc_agents = \
                 cls.launch_cluster(nova_client, network, num_of_oc_agents)
                 
-                
-        print "************************** Cluster Launched" 
+        logger.info("Cluster Launched")
         Utils.print_server_info(oc_server)
         for oc_agent in oc_agents:
             Utils.print_server_info(oc_agent)
-            
 
-        print "************************** Provisioning Cluster" 
+        logger.info("Provisioning Cluster")
         oc_user = "admin"
         oc_password = oc_server.oc_password
         oc_server_ipv4 = Utils.get_ipv4(oc_server.addresses["public"])
@@ -378,6 +425,7 @@ class CloudServers():
         #oc.provision_cluster(nova_client, oc_server, URL, USER, \
         #    PASSWORD, 3, cidr)
         
+        logger.info("Build A Cloud finished")
 #-------------------------------------------------------------------------------
     @classmethod
     def list_networks(cls, nova_client):
@@ -391,19 +439,19 @@ class CloudServers():
         
         return networks
 #-------------------------------------------------------------------------------
-    @classmethod
-    def get_network(cls, nova_client, network_id):
-        network = None
-
-        while network is None:
-            try:
-                network_manager = rax_network.NetworkManager(nova_client)
-                network = network_manager.get(network_id)
-            except Exception,e:
-                print str(e)
-                print "Retrying in 5 secs..."
-                sleep(5)
-        return network
+#    @classmethod
+#    def get_network(cls, nova_client, network_id):
+#        network = None
+#
+#        while network is None:
+#            try:
+#                network_manager = rax_network.NetworkManager(nova_client)
+#                network = network_manager.get(network_id)
+#            except Exception,e:
+#                print str(e)
+#                print "Retrying in 10 secs..."
+#                sleep(10)
+#        return network
 #-------------------------------------------------------------------------------
     @classmethod
     def delete_network(cls, nova_client, network):
@@ -411,30 +459,38 @@ class CloudServers():
             try:
                 network_manager = rax_network.NetworkManager(nova_client)
                 network_manager.delete(network.id)
-                print "Removed network: %s | %s" % (network.label, network.id)
+                msg = "Removed network: %s | %s" % (network.label, network.id)
+                logger.debug(msg)
                 break
             except Exception,e:
-                print str(e)
-                print "Retrying in 5 secs..."
-                sleep(5)
+                msg = str(e)
+                if e.code == 403:
+                    msg += " - Network in use"
+                logger.error(msg)
+                logger.debug("Retrying in 10 secs...")
+                sleep(10)
 #-------------------------------------------------------------------------------
     @classmethod
     def create_network(cls, nova_client, label, cidr):
+        logger.info("Creating cloud network")
         network = None
 
         while network is None:
             try:
                 network_manager = rax_network.NetworkManager(nova_client)
                 network = network_manager.create(label, cidr)
-                print "Created network: %s | %s" % (network.label, network.id)
+                msg = "Created network: %s | %s" % (network.label, network.id)
+                logger.info(msg)
             except Exception,e:
-                print str(e)
-                print "Retrying in 5 secs..."
-                sleep(5)
+                logger.error(str(e))
+                msg = "Retrying in 10 secs..."
+                logger.error(msg)
+                sleep(10)
         return network
 #-------------------------------------------------------------------------------
     @classmethod
     def remove_user_networks(cls, nova_client):
+        logger.debug("Checking & removing all cloud networks (if any)")
         networks = cls.list_networks(nova_client)
 
         if networks:

@@ -3,11 +3,15 @@ from time import time, sleep
 import base64
 import inspect
 import json
+import logging
 import random
 import socket
 import subprocess
 import sys
 import urllib2
+import logging
+#-------------------------------------------------------------------------------
+logger = logging.getLogger('build_a_cloud')
 #-------------------------------------------------------------------------------
 class Utils:
 #-------------------------------------------------------------------------------
@@ -35,7 +39,7 @@ class Utils:
             output = output.replace("\n", "")
             output = output.replace(" ", "")
         except Exception,e:
-            print str(e)
+            logger.error(str(e))
             return none
 
         return output
@@ -47,7 +51,7 @@ class Utils:
             output, error = p.communicate()
             return output
         except Exception,e:
-            print str(e)
+            logger.error(str(e))
             return None
 #-------------------------------------------------------------------------------
     @classmethod
@@ -58,28 +62,38 @@ class Utils:
                 if server.name == server_name:
                     return server
         except Exception,e:
-            print cls.logging(e)
+            logger.error(str(e))
             return None
 #-------------------------------------------------------------------------------
     @classmethod
     def print_server_status(cls, server):
         try:
-            print "\nServer Name:", server.name
-            print "Server Status:", server.status
-            print "Server Progress: %s%%" % server.progress
+            msg = "Server Name: %s" % server.name
+            logger.debug(msg)
+            msg = "Server Status: %s" % server.status
+            logger.debug(msg)
+            msg = "Server Progress: %s%%" % server.progress
+            logger.debug(msg)
         except Exception,e:
-            print cls.logging(e)
+            logger.error(str(e))
 #-------------------------------------------------------------------------------
     @classmethod
     def print_server_info(cls, server):
         try:
-            print "\nServer Status:", server.status
-            print "Server Name:", server.name
-            print "Server Public IP:", cls.get_ipv4(server.addresses["public"])
-            print "Server Root Password:", server.adminPass
+            msg = "Server Status: %s" % server.status
+            logger.info(msg)
+            msg =  "Server Name: %s" % server.name
+            logger.info(msg)
+            msg =  "Server Public IP: %s" % \
+                cls.get_ipv4(server.addresses["public"])
+            logger.info(msg)
+            msg = "Server Root Password: %s" % server.adminPass
+            logger.info(msg)
             if server.oc_password:
-                print "OpenCenter Username: admin"
-                print "OpenCenter Password:", server.oc_password
+                msg = "OpenCenter Username: admin"
+                logger.info(msg)
+                msg = "OpenCenter Password: %s" % server.oc_password
+                logger.info(msg)
         except Exception,e:
             pass
 #-------------------------------------------------------------------------------
@@ -107,9 +121,10 @@ class Utils:
             try:
                 limits = nova_client.limits.get()
             except Exception,e:
-                print cls.logging(e)
-                print "Retrying in 5 secs..."
-                sleep(5)
+                logger.error(str(e))
+                msg = "Retrying in 10 secs..."
+                logger.error(msg)
+                sleep(10)
                 
         for limit in limits.absolute:
             if limit.name == limit_name:
@@ -139,13 +154,20 @@ class Utils:
         except:
             return False
 #-------------------------------------------------------------------------------
-    @classmethod
-    def logging(cls, e):
-        frame,filename,line_number,function_name,lines,index=\
-                inspect.getouterframes(inspect.currentframe())[1]
-        msg ="Exception - %s | %s() | Line# %s: \n\t%s" % \
-                (filename, function_name, line_number, str(e))
-        return msg
+#    @classmethod
+#    def log(cls, message):
+#        timestamp = str(int(time()))
+#        filename = "%s.log" % timestamp
+#        filepath = "/".join(["logs", filename]) 
+#        f = open(filepath, 'w')
+#
+#        frame,filename,line_number,function_name,lines,index=\
+#                inspect.getouterframes(inspect.currentframe())[1]
+#        msg ="file: %s | func: %s() | line # %s | message: \n\t%s\n"\
+#                    % (filename, function_name, line_number, str(data))
+#        f.write(msg)
+#
+#        f.close()
 #-------------------------------------------------------------------------------
     @classmethod
     def oc_api(cls, url, username, password, **kwargs):
@@ -169,7 +191,7 @@ class Utils:
         except Exception, e:
             error_json = e.read()
             if e.code != 409:
-                print cls.logging(error_json)
+                logger.error(error_json)
             json_data = json.loads(error_json)
             return json_data
 #-------------------------------------------------------------------------------
@@ -185,7 +207,7 @@ class Utils:
                 extract = json_data[object_type]
                 return extract
         except Exception,e:
-            print Utils.logging(e)
+            logger.error(str(e))
             return None
 #-------------------------------------------------------------------------------
     @classmethod
