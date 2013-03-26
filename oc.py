@@ -59,15 +59,19 @@ class Task:
             sleep(5)
             
         # Check if task failed after done
-        result_str = task['result']['result_str'].lower()
-        result_code = int(task['result']['result_code'])
-        
-        if result_str == 'failure' or result_code != 0:
-            logger.error("'%s' failed " % (action))
-            return False
-        
-        logger.info("'%s' succeeded " % (action))
-        return True
+        tasks_json = Utils.oc_api(url + "/tasks/", user, password)
+        tasks = Utils.extract_oc_object_type(tasks_json, "tasks")
+        for current_task in tasks:
+            if current_task['id'] == task['id']:
+                result_str = current_task['result']['result_str'].lower()
+                result_code = int(current_task['result']['result_code'])
+                
+                if ("fail" in result_str) or (result_code != 0):
+                    logger.error("'%s' failed " % (action))
+                    return False
+                
+                logger.info("'%s' succeeded " % (action))
+                return True
 #-------------------------------------------------------------------------------
     @classmethod
     def wait_for_remaining_tasks(cls, url, user, password):
