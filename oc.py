@@ -325,9 +325,9 @@ class Node:
         
         try:
             ipv4 = Utils.get_ipv4(server.addresses["public"])
-            command = "scp -o StrictHostKeyChecking=no " \
-                    "vm_scripts/update_chef.sh %s:/root/ ;" \
-                    "ssh -o StrictHostKeyChecking=no %s "\
+            command = "scp -o StrictHostKeyChecking=no " + \
+                    "vm_scripts/update_chef.sh %s:/root/ ;" + \
+                    "ssh -o StrictHostKeyChecking=no %s " + \
                     "/root/update_chef.sh > /dev/null" % (ipv4, ipv4)
             logger.debug(Utils.do_subprocess(command))
         except Exception,e:
@@ -337,9 +337,9 @@ class Node:
     def make_nova_changes(cls, server):
         try:
             ipv4 = Utils.get_ipv4(server.addresses["public"])
-            command = "scp -o StrictHostKeyChecking=no "\
-                    "vm_scripts/nova.sh %s:/root/ ;" \
-                    "ssh -o StrictHostKeyChecking=no " \
+            command = "scp -o StrictHostKeyChecking=no " + \
+                    "vm_scripts/nova.sh %s:/root/ ;" + \
+                    "ssh -o StrictHostKeyChecking=no " + \
                     "%s /root/nova.sh > /dev/null" % (ipv4, ipv4)
             logger.debug(Utils.do_subprocess(command))
         except Exception,e:
