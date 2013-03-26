@@ -407,11 +407,12 @@ class CloudServers():
 #-------------------------------------------------------------------------------
     @classmethod
     def delete_network(cls, nova_client, network):
-        while network in cls.list_networks(nova_client):
+        while True:
             try:
                 network_manager = rax_network.NetworkManager(nova_client)
                 network_manager.delete(network.id)
                 print "Removed network: %s | %s" % (network.label, network.id)
+                break
             except Exception,e:
                 print str(e)
                 print "Retrying in 5 secs..."
