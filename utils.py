@@ -4,6 +4,7 @@ import base64
 import inspect
 import json
 import logging
+import os
 import random
 import socket
 import subprocess
@@ -47,12 +48,10 @@ class Utils:
     @classmethod
     def do_subprocess(cls, command):
         try:
-            p = subprocess.Popen(command, stdout = subprocess.PIPE, shell=True)
-            output, error = p.communicate()
-            return output
+            p = subprocess.Popen(\
+                    command, stdout = open(os.devnull, 'wb'), shell=True)
         except Exception,e:
             logger.error(str(e))
-            return None
 #-------------------------------------------------------------------------------
     @classmethod
     def find_server(cls, nova_client, server_name):
