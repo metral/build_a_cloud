@@ -231,8 +231,8 @@ class CloudServers():
 
         # Run payloads via SSH
         ipv4 = Utils.get_ipv4(updated_oc_server.addresses["public"])
-        command = "ssh -o StrictHostKeyChecking=no %s " + \
-                "'chmod +x /etc/prep.sh ; /etc/prep.sh'" % ipv4
+        command = "ssh -o StrictHostKeyChecking=no %s " % ipv4 + \
+                "'chmod +x /etc/prep.sh ; /etc/prep.sh'"
         Utils.do_subprocess(command)
 
         # Wait for opencenter services to be ready, if required
