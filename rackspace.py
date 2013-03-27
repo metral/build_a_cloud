@@ -1,7 +1,8 @@
 #===============================================================================
-import os_networksv2_python_novaclient_ext as rax_network
+from datetime import datetime
 from novaclient.v1_1 import client as python_novaclient
 from time import time, sleep
+import os_networksv2_python_novaclient_ext as rax_network
 import sys
 import logging
 import logging_colorer
@@ -15,7 +16,8 @@ default_nics = [
 logger = logging.getLogger("build_a_cloud") 
 logger.setLevel(logging.DEBUG)
 
-timestamp = str(int(time()))
+t=datetime.fromtimestamp(time())
+timestamp = t.strftime('%Y-%m-%d_%H%M')
 filename = "%s.log" % timestamp
 filepath = "/".join(["logs", filename]) 
 fh = logging.FileHandler(filepath)
