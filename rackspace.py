@@ -181,6 +181,8 @@ class CloudServers():
             return updated_server
         except Exception,e:
             logger.error(str(e))
+            logger.debug("Server Name: %s | Server ID: %s" \
+                    % (server.name, server.id))
             return None
 #-------------------------------------------------------------------------------
     @classmethod
@@ -259,6 +261,18 @@ class CloudServers():
         return oc_server
 #-------------------------------------------------------------------------------
     @classmethod
+    def oc_server_recover(cls, server_to_delete, oc_port, nova_client, network):
+        cls.delete_server(server_to_delete)
+        sleep(10)
+        
+        oc_server = cls.launch_oc_server(nova_client, network)
+
+        updated_oc_server = cls.wait_for_oc_server(\
+                nova_client, oc_server, network, oc_port)
+        
+        return updated_oc_server
+#-------------------------------------------------------------------------------
+    @classmethod
     def wait_for_oc_server(cls, nova_client, oc_server, 
             network, oc_port = None):
 
@@ -272,12 +286,12 @@ class CloudServers():
                 updated_oc_server = \
                         cls.update_server(nova_client, updated_oc_server)
             elif status is None:
-                msg = "Server Error (Server): Deleting %s" \
+                msg = "Server Error (OC Server Boot): Deleting %s" \
                         % updated_oc_server.name
-                logger.info(msg)
-                cls.delete_server(updated_oc_server)
-                sleep(10)
-                updated_oc_server = cls.launch_oc_server(nova_client, network)
+                logger.error(msg)
+                oc_port = 443
+                return cls.oc_server_recover(\
+                        updated_oc_server, oc_port, nova_client, network)
             status = cls.check_status(nova_client, updated_oc_server)
                 
         ipv4 = Utils.get_ipv4(updated_oc_server.addresses["public"])
@@ -288,12 +302,12 @@ class CloudServers():
             updated_oc_server = cls.post_setup(nova_client, oc_server, oc_port)
         # If for some reason network is not working even when active, try again
         else: 
-            cls.delete_server(updated_oc_server)
-            sleep(10)
-            updated_oc_server = cls.launch_oc_server(nova_client, network)
+            msg = "Server Error (OC Server not routable): Deleting %s" \
+                    % updated_oc_server.name
+            logger.error(msg)
             oc_port = 443
-            updated_oc_server = cls.wait_for_oc_server(\
-                    nova_client, updated_oc_server, network, oc_port)
+            return cls.oc_server_recover(\
+                    updated_oc_server, oc_port, nova_client, network)
         
         return updated_oc_server
 #-------------------------------------------------------------------------------
@@ -315,7 +329,7 @@ class CloudServers():
                                     cls.post_setup(nova_client, oc_agent)
                             updated_oc_agents.append(updated_oc_agent)
                         else:
-                            msg = "Server Error (Agent Net): Deleting %s" \
+                            msg = "Server Error (OC Agent Boot): Deleting %s" \
                                     % oc_agent.name
                             logger.error(msg)
                             cls.delete_server(oc_agent)
@@ -326,7 +340,8 @@ class CloudServers():
                 elif status == False:
                     sleep(10)
                 elif status is None:
-                    msg = "Server Error (Agent): Deleting %s" % oc_agent.name
+                    msg = "Server Error (OC Agent not routable): Deleting %s" \
+                            % oc_agent.name
                     logger.error(msg)
                     cls.delete_server(oc_agent)
                     sleep(10)
@@ -400,6 +415,7 @@ class CloudServers():
         num_of_oc_agents = 4
         oc_server, oc_agents = \
                 cls.launch_cluster(nova_client, network, num_of_oc_agents)
+        oc_server = cls.launch_cluster(nova_client, network, num_of_oc_agents)
                 
         logger.info("Cluster Launched")
         Utils.print_server_info(oc_server)
@@ -415,18 +431,6 @@ class CloudServers():
         oc.provision_cluster(nova_client, oc_server, oc_url, oc_user, \
             oc_password, num_of_oc_agents, cidr)
 
-        #USER = "admin"
-        #PASSWORD = "KOHirS1QrtSs"
-        #SERVER_IPV4 = "166.78.118.53"
-        #URL ="https://%s:8443" % SERVER_IPV4
-
-        #cidr = "192.168.3.0/24"
-        #class Foo():
-        #    name = "bac-opencenter-server-1363043393-72479695"
-        #oc_server = Foo()
-        #
-        #oc.provision_cluster(nova_client, oc_server, URL, USER, \
-        #    PASSWORD, 3, cidr)
         
         logger.info("Build A Cloud finished")
 #-------------------------------------------------------------------------------
