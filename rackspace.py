@@ -415,7 +415,6 @@ class CloudServers():
         num_of_oc_agents = 4
         oc_server, oc_agents = \
                 cls.launch_cluster(nova_client, network, num_of_oc_agents)
-        oc_server = cls.launch_cluster(nova_client, network, num_of_oc_agents)
                 
         logger.info("Cluster Launched")
         Utils.print_server_info(oc_server)
