@@ -48,8 +48,9 @@ class Utils:
     @classmethod
     def do_subprocess(cls, command):
         try:
-            p = subprocess.Popen(\
-                    command, stdout = open(os.devnull, 'wb'), shell=True)
+            with open(os.devnull) as quiet:
+                p = subprocess.Popen(\
+                        command, stdout=quiet, stderr=quiet, shell=True)
         except Exception,e:
             logger.error(str(e))
 #-------------------------------------------------------------------------------
