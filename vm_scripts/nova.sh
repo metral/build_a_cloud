@@ -24,8 +24,11 @@ function setup_iptables {
     # ...and make persistent
     echo iptables-persistent iptables-persistent/autosave_v4 select true | debconf-set-selections
     echo iptables-persistent iptables-persistent/autosave_v6 select true | debconf-set-selections
+    sleep 20
+    
     apt-get -y install iptables-persistent
-
+    sleep 20
+    
     iptables-save > /etc/iptables/rules
 }
 
