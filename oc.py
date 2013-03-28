@@ -193,6 +193,7 @@ class Adventure:
                                 "osops_mgmt": cidr,
                                 "osops_nova": cidr,
                                 "osops_public": cidr,
+                                "libvirt_type": "qemu",
                                 }
                             }
                         ]
@@ -371,10 +372,10 @@ def provision_cluster(nova_client, oc_server, url, user,
     service_nodes_server = Node.find(oc_server.name, url, user, password)
     
     # Enable qemu in chef environment template file
-    logger.info("Updating Chef Environment Template to use Qemu")
-    service_nodes_server_node = Utils.find_server(\
-            nova_client, service_nodes_server['name'])
-    Node.make_chef_changes(service_nodes_server_node)
+    #logger.info("Updating Chef Environment Template to use Qemu")
+    #service_nodes_server_node = Utils.find_server(\
+    #        nova_client, service_nodes_server['name'])
+    #Node.make_chef_changes(service_nodes_server_node)
     
     # Wait for all unprovisioned OC agent nodes to be up & talking to OC server
     unprovisioned_nodes = Node.wait_for_agents(\
@@ -387,32 +388,20 @@ def provision_cluster(nova_client, oc_server, url, user,
     logger.info("Chef-Server:")
     logger.info(chef_server['name'])
     
-    ##TODO: DELETE THIS!!! 
-    #chef_server = {
-    #        'id': 5,
-    #        'name': "bac-opencenter-agent-1363036620-85805073",
-    #        }
-    
-    ##TODO: DELETE THIS!!! 
-    #controller = {
-    #        'id': 6,
-    #        }
-    #
-
     # Create Nova Cluster
-    logger.info("Create Nova Cluster:")
+    logger.info("Creating Nova Cluster")
     Adventure.create_nova_cluster(service_nodes_server, chef_server, url, \
             user, password, cidr)
     
     # Provision Nova Controller
-    logger.info("Nova Controller:")
+    logger.info("Provisioning Nova Controller")
     node = unprovisioned_nodes.pop(0)
     controller = Adventure.provision_nova_node(\
             "Infrastructure", node, url, user, password)
     logger.info(controller['name'])
 
     # Run Upload Initial Glance Images on Controller
-    logger.info("Uploading Initial Glance Images on Controller")
+    logger.info("Uploading Initial Glance Images on Nova Controller")
     Adventure.generic_adventure(controller, url, user, password, \
             "Upload Initial Glance Images", "openstack_upload_images")
 
@@ -421,7 +410,7 @@ def provision_cluster(nova_client, oc_server, url, user,
     Node.make_nova_changes(controller_node)
     
     # Provision Nova Compute
-    logger.info("Nova Compute:")
+    logger.info("Provisioning Nova Computes")
     num_of_computes = len(unprovisioned_nodes)
     computes = []
     for i in range(0, num_of_computes):
