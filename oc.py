@@ -371,12 +371,6 @@ def provision_cluster(nova_client, oc_server, url, user,
     #Get OpenCenter server node
     service_nodes_server = Node.find(oc_server.name, url, user, password)
     
-    # Enable qemu in chef environment template file
-    #logger.info("Updating Chef Environment Template to use Qemu")
-    #service_nodes_server_node = Utils.find_server(\
-    #        nova_client, service_nodes_server['name'])
-    #Node.make_chef_changes(service_nodes_server_node)
-    
     # Wait for all unprovisioned OC agent nodes to be up & talking to OC server
     unprovisioned_nodes = Node.wait_for_agents(\
             num_of_oc_agents, url, user, password)
@@ -423,16 +417,4 @@ def provision_cluster(nova_client, oc_server, url, user,
     logger.info("Waiting for remaining running tasks ...")
     Task.wait_for_remaining_tasks(url, user, password)
     
-#-------------------------------------------------------------------------------
-#USER = "admin"
-#PASSWORD = "DKlq20bAVCyF"
-#SERVER_IPV4 = "166.78.109.227"
-#URL ="https://%s:8443" % SERVER_IPV4
-#
-#cidr = "192.168.3.0/24"
-#class Foo():
-#    name = "bac-opencenter-server-1363035526-75498007"
-#oc_server = Foo()
-#
-#provision_cluster(oc_server, None, URL, USER, PASSWORD, 5, cidr)
 #-------------------------------------------------------------------------------

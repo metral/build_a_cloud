@@ -154,21 +154,6 @@ class Utils:
         except:
             return False
 #-------------------------------------------------------------------------------
-#    @classmethod
-#    def log(cls, message):
-#        timestamp = str(int(time()))
-#        filename = "%s.log" % timestamp
-#        filepath = "/".join(["logs", filename]) 
-#        f = open(filepath, 'w')
-#
-#        frame,filename,line_number,function_name,lines,index=\
-#                inspect.getouterframes(inspect.currentframe())[1]
-#        msg ="file: %s | func: %s() | line # %s | message: \n\t%s\n"\
-#                    % (filename, function_name, line_number, str(data))
-#        f.write(msg)
-#
-#        f.close()
-#-------------------------------------------------------------------------------
     @classmethod
     def oc_api(cls, url, username, password, **kwargs):
         request = urllib2.Request(url)
