@@ -52,7 +52,7 @@ Note: This is written for usage on an Ubuntu 12.04 machine
 <!---------------------------------------------------------------------------->
 
 <h3>Usage</h3>
-1. `$ python cloud.py`
+1. `$ python cloud.py &`
 2. Track deployment progress in logs/\{timestamp\}.log
 3. All node information with regards to server IP's, usernames & passwords are
 displayed in the logs
