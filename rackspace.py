@@ -398,6 +398,26 @@ class CloudServers():
         return updated_oc_server, oc_agents
 #-------------------------------------------------------------------------------
     @classmethod
+    def delete_errored_servers(cls, nova_client):
+         
+        servers = nova_client.servers.list()
+        
+        for server in servers:
+            if server.status == "ERROR":
+                msg = "Deleting remaining server that had an error: %s" % server
+                logger.debug(msg)
+                retry = True
+                while retry:
+                    try:
+                        result = cls.delete_server(server)
+                        if result is None:
+                            retry = False
+                    except Exception,e:
+                        logger.error(str(e))
+                        print "Retrying in 10 secs..."
+                        sleep(10)
+#-------------------------------------------------------------------------------
+    @classmethod
     def build_a_cloud(cls, nova_client):
         logger.info("Build A Cloud Started")
 
@@ -429,6 +449,9 @@ class CloudServers():
          
         oc.provision_cluster(nova_client, oc_server, oc_url, oc_user, \
             oc_password, num_of_oc_agents, cidr)
+
+        logger.info("Checking & Deleting any Servers that had a Booting Error")
+        cls.delete_errored_servers(nova_client)
 
         logger.info("Build A Cloud Finished")
 #-------------------------------------------------------------------------------
