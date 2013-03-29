@@ -45,7 +45,7 @@ Note: This is written for usage on an Ubuntu 12.04 machine
 2. Cloud Networks enabled on the Cloud Servers Account: https://www.iwantcloudnetworks.com/
 3. Quota availability of at least 1 Cloud Network
 4. Quota availability of at least 40GB of RAM
-5. Have your Cloud Servers API Key ready: https://mycloud.rackspace.com/a/metral/account/api-keys
+5. Have your Cloud Servers API Key ready: https://mycloud.rackspace.com
 6. Appropriately set your Cloud Servers username in 'creds'
 7. Appropriately set your Cloud Servers password (api key) in 'creds'
 8. Run `$ ./install_deps.sh` to install the dependencies needed
