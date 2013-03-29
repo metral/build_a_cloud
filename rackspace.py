@@ -399,7 +399,7 @@ class CloudServers():
 #-------------------------------------------------------------------------------
     @classmethod
     def build_a_cloud(cls, nova_client):
-        logger.info("Build A Cloud started")
+        logger.info("Build A Cloud Started")
 
         # Dev Cleanup
         cls.remove_user_networks(nova_client)
@@ -416,7 +416,7 @@ class CloudServers():
         oc_server, oc_agents = \
                 cls.launch_cluster(nova_client, network, num_of_oc_agents)
                 
-        logger.info("Cluster Launched")
+        logger.info("Vanilla Cluster Launched")
         Utils.print_server_info(oc_server)
         for oc_agent in oc_agents:
             Utils.print_server_info(oc_agent)
@@ -430,8 +430,7 @@ class CloudServers():
         oc.provision_cluster(nova_client, oc_server, oc_url, oc_user, \
             oc_password, num_of_oc_agents, cidr)
 
-        
-        logger.info("Build A Cloud finished")
+        logger.info("Build A Cloud Finished")
 #-------------------------------------------------------------------------------
     @classmethod
     def list_networks(cls, nova_client):

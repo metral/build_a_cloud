@@ -377,31 +377,34 @@ def provision_cluster(nova_client, oc_server, url, user,
 
     # Provision OC agent as Chef Server
     node = unprovisioned_nodes.pop(0)
+    logger.info("Provisioning Chef-Server")
     chef_server = Adventure.provision_chef_server(node, url, user, password)
     chef_server_node = Utils.find_server(nova_client, chef_server['name'])
-    logger.info("Chef-Server:")
-    logger.info(chef_server['name'])
+    logger.info("Chef-Server Provisioned: %s" % chef_server['name'])
     
     # Create Nova Cluster
     logger.info("Creating Nova Cluster")
     Adventure.create_nova_cluster(service_nodes_server, chef_server, url, \
             user, password, cidr)
+    logger.info("Nova Cluster Created")
     
     # Provision Nova Controller
     logger.info("Provisioning Nova Controller")
     node = unprovisioned_nodes.pop(0)
     controller = Adventure.provision_nova_node(\
             "Infrastructure", node, url, user, password)
-    logger.info(controller['name'])
+    logger.info("Nova Controller Provisioned: %s" % controller['name'])
 
     # Run Upload Initial Glance Images on Controller
     logger.info("Uploading Initial Glance Images on Nova Controller")
     Adventure.generic_adventure(controller, url, user, password, \
             "Upload Initial Glance Images", "openstack_upload_images")
+    logger.info("Initial Glance Images Uploaded to Nova Controller")
 
-    logger.info("Making Nova Changes on Controller:")
+    logger.info("Making Nova Changes on Controller")
     controller_node = Utils.find_server(nova_client, controller['name'])
     Node.make_nova_changes(controller_node)
+    logger.info("Nova Changes on Controller Done")
     
     # Provision Nova Compute
     logger.info("Provisioning Nova Computes")
@@ -412,9 +415,10 @@ def provision_cluster(nova_client, oc_server, url, user,
         compute = Adventure.provision_nova_node(\
                 "AZ nova", node, url, user, password)
         computes.append(compute)
-        logger.info(compute['name'])
+        logger.info("Nova Compute Provisioned on Node: %s" % compute['name'])
     
     logger.info("Waiting for remaining running tasks ...")
     Task.wait_for_remaining_tasks(url, user, password)
+    logger.info("Remaining Running Tasks Complete")
     
 #-------------------------------------------------------------------------------
