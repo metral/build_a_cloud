@@ -12,7 +12,7 @@ onto VM's deployed in
 in a completely automatic hands-free manner in approximately 1 hour. 
 This allows you to test the OpenStack Nova capabilities offered by 
 Rackspace's Private Cloud without needing to setup or use any 
-dedicated infrastructure of your own.
+dedicated infrastructure of your own nor go through the setup process yourself.
 
 There are a total of 5 servers instantiated in the following capacity:
 
