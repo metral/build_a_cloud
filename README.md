@@ -66,14 +66,16 @@ corresponding OpenCenter user & password
 <!---------------------------------------------------------------------------->
 
 <h3>Notes</h3>
-1. Once you run cloud.py, DO NOT interfere with any portion of the install
+1. The OpenStack username and password are the same as the OpenCenter username
+   and passwords
+2. Once you run cloud.py, DO NOT interfere with any portion of the install
 process. That includes, modifying anything on the public cloud either through
 the dashboard or command line, playing with the OpenCenter GUI (as this
 configures the environment already for you via the OpenCenter API) or tweaking
 settings in the VM's themselves.
-2. The Private Cloud environment is **NOT** meant to be used for anything other
+3. The Private Cloud environment is **NOT** meant to be used for anything other
    than in a testing or proof of concept manner
-3. Currently, any cloud networks created can only be deleted via the API. If
+4. Currently, any cloud networks created can only be deleted via the API. If
 you would like to remove all existing cloud networks, in build\_a\_cloud() of 
 rackspace.py, uncomment the remove\_user\_networks() to execute this request.
 
