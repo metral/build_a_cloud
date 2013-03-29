@@ -50,7 +50,7 @@ Note: This is written for usage on an Ubuntu 12.04 machine
 6. Appropriately set your Cloud Servers username in 'creds'
 7. Appropriately set your Cloud Servers password (api key) in 'creds'
 8. Run `$ ./install_deps.sh` to install the dependencies needed
-8. Source the 'creds' file into your environment
+8. Source the 'creds' file into your environment `$ source creds`
 9. Test that the sourced 'creds' work by issuing a `$ nova image-list`
 
 <!---------------------------------------------------------------------------->
