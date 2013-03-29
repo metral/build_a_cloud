@@ -74,7 +74,10 @@ the dashboard or command line, playing with the OpenCenter GUI (as this
 configures the environment already for you via the OpenCenter API) or tweaking
 settings in the VM's themselves.
 3. The Private Cloud environment is **NOT** meant to be used for anything other
-   than in a testing or proof of concept manner
+   than in a testing or proof of concept manner. Due to the fact that there is
+   nested virtualization taking place for both servers & networks, please note
+   that booting VM's in OpenStack as well as pinging/SSH'ing into said VM's
+   might take longer than usual
 4. Currently, any cloud networks created can only be deleted via the API. If
 you would like to remove all existing cloud networks, in build\_a\_cloud() of 
 rackspace.py, uncomment the remove\_user\_networks() to execute this request.
