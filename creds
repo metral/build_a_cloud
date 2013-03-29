@@ -1,5 +1,3 @@
-#!/bin/bash
-
 export OS_USERNAME="" # Public Cloud Username
 export OS_PASSWORD="" # Public Cloud API KEY
 export OS_TENANT_NAME=$OS_USERNAME # Public Cloud Tenant Name (same as Username)
