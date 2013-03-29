@@ -63,8 +63,18 @@ displayed in the logs
 4. To view the OpenCenter GUI, use the bac-opencenter-server-\* IP and the
 corresponding OpenCenter user & password
 
-**Note**: Once you run cloud.py, DO NOT interfere with any portion of the install
+<!---------------------------------------------------------------------------->
+
+<h3>Notes</h3>
+1. Once you run cloud.py, DO NOT interfere with any portion of the install
 process. That includes, modifying anything on the public cloud either through
 the dashboard or command line, playing with the OpenCenter GUI (as this
 configures the environment already for you via the OpenCenter API) or tweaking
 settings in the VM's themselves.
+2. The Private Cloud environment is **NOT** meant to be used for anything other
+   than in a testing or proof of concept manner
+3. Currently, any cloud networks created can only be deleted via the API. If
+you would like to remove all existing cloud networks, in build\_a\_cloud() of 
+rackspace.py, uncomment the remove\_user\_networks() to execute this request.
+
+<!---------------------------------------------------------------------------->
