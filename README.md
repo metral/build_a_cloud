@@ -61,3 +61,9 @@ Note: This is written for usage on an Ubuntu 12.04 machine
 displayed in the logs
 4. To view the OpenCenter GUI, use the bac-opencenter-server-\* IP and the
 corresponding OpenCenter user & password
+
+**Note**: Once you run cloud.py, DO NOT interfere with any portion of the install
+process. That includes, modifying anything on the public cloud either through
+the dashboard or command line, playing with the OpenCenter GUI (as this
+configures the environment already for you via the OpenCenter API) or tweaking
+settings in the VM's themselves.
