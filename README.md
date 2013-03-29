@@ -8,7 +8,8 @@
 Build A Cloud allows you to deploy <a
 href="http://www.rackspace.com/cloud/private">Rackspace's Private Cloud v3</a> 
 onto VM's deployed in 
-<a href="http://www.rackspace.com/cloud/servers/">Rackspace's Public Cloud Servers</a>. 
+<a href="http://www.rackspace.com/cloud/servers/">Rackspace's Public Cloud Servers</a>
+in a completely automatic hands-free manner in approximately 1 hour. 
 This allows you to test the OpenStack Nova capabilities offered by 
 Rackspace's Private Cloud without needing to setup or use any 
 dedicated infrastructure of your own.
