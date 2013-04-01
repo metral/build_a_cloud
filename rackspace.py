@@ -422,7 +422,7 @@ class CloudServers():
         logger.info("Build A Cloud Started")
 
         # Dev Cleanup
-        #cls.remove_user_networks(nova_client)
+        cls.remove_user_networks(nova_client)
 
         # Check RAM & CloudNetwork Quotas
         cls.check_quotas(nova_client)
