@@ -83,3 +83,10 @@ you would like to remove all existing cloud networks, in build\_a\_cloud() of
 rackspace.py, uncomment the remove\_user\_networks() to execute this request.
 
 <!---------------------------------------------------------------------------->
+<h3>Known Issues</h3>
+1. If a step in the OpenCenter provisioning fails, currently, Build A Cloud
+   fails and the process exits completely. To continue the provisioning, you
+   can either manually log into the OpenCenter GUI hosted on the OpenCenter
+   server and provision the nodes yourself, or restart the Build A Cloud
+   process
+<!---------------------------------------------------------------------------->
