@@ -3,6 +3,7 @@ from time import sleep
 from utils import Utils
 import json
 import logging
+import sys
 #-------------------------------------------------------------------------------
 logger = logging.getLogger('build_a_cloud')
 #-------------------------------------------------------------------------------
@@ -68,10 +69,12 @@ class Task:
                 
                 if ("fail" in result_str) or (result_code != 0):
                     logger.error("'%s' failed " % (action))
-                    return False
+                    logger.error("OC Task Failed - Build A Cloud Failed")
+                    sys.exit(0)
+                    #return False
                 
                 logger.info("'%s' succeeded " % (action))
-                return True
+                #return True
 #-------------------------------------------------------------------------------
     @classmethod
     def wait_for_remaining_tasks(cls, url, user, password):
@@ -150,16 +153,12 @@ class Adventure:
             if result['status'] == 202:
                 # Monitor tasking of install_chef_server
                 action = "install_chef_server"
-                task_result = Task.wait_for_task(\
+                Task.wait_for_task(\
                         parent_id, node, action, url, user, password)
-                if not task_result:
-                    logger.debug("Retrying '%s' in 10 secs..." % (action))
-                    sleep(10)
-                    return cls.provision_chef_server(node, url, user, password)
 
                 # Monitor tasking of download_cookbooks
                 action = "download_cookbooks"
-                task_result = Task.wait_for_task(\
+                Task.wait_for_task(\
                         parent_id, node, action, url, user, password)
         except Exception,e:
             logger.error(str(e))
