@@ -151,7 +151,9 @@ class CloudServers():
             
 #-------------------------------------------------------------------------------
     @classmethod
-    def wait_for_oc_service(cls, server, oc_port):
+    def wait_for_oc_service(cls, server):
+        oc_port = 443
+        
         try:
             ipv4 = Utils.get_ipv4(server.addresses["public"])
             msg = "Waiting for OpenCenter service to be up: %s" % server.name
@@ -240,7 +242,7 @@ class CloudServers():
         Utils.do_subprocess(command)
 
         # Wait for opencenter services to be ready, if required
-        if oc_port: cls.wait_for_oc_service(updated_oc_server, oc_port)
+        if oc_port: cls.wait_for_oc_service(updated_oc_server)
         
         return updated_oc_server
 #-------------------------------------------------------------------------------
@@ -261,22 +263,24 @@ class CloudServers():
         return oc_server
 #-------------------------------------------------------------------------------
     @classmethod
-    def oc_server_recover(cls, server_to_delete, oc_port, nova_client, network):
+    def oc_server_recover(cls, msg, server_to_delete, nova_client, network):
+        logger.error(msg)
         cls.delete_server(server_to_delete)
         sleep(10)
         
         oc_server = cls.launch_oc_server(nova_client, network)
 
         updated_oc_server = cls.wait_for_oc_server(\
-                nova_client, oc_server, network, oc_port)
+                nova_client, oc_server, network)
         
         return updated_oc_server
 #-------------------------------------------------------------------------------
     @classmethod
     def wait_for_oc_server(cls, nova_client, oc_server, 
-            network, oc_port = None):
+            network):
 
         updated_oc_server = oc_server
+        oc_port = 443
         
         # Check server status until active
         status = cls.check_status(nova_client, updated_oc_server)
@@ -286,12 +290,10 @@ class CloudServers():
                 updated_oc_server = \
                         cls.update_server(nova_client, updated_oc_server)
             elif status is None:
-                msg = "Server Error (OC Server Boot): Deleting %s" \
+                msg = "Server Error (OC Server - Booting Issue): Deleting %s" \
                         % updated_oc_server.name
-                logger.error(msg)
-                oc_port = 443
                 return cls.oc_server_recover(\
-                        updated_oc_server, oc_port, nova_client, network)
+                        msg, updated_oc_server, nova_client, network)
             status = cls.check_status(nova_client, updated_oc_server)
                 
         ipv4 = Utils.get_ipv4(updated_oc_server.addresses["public"])
@@ -300,14 +302,18 @@ class CloudServers():
         # If active, do post setup
         if Utils.port_is_open(ipv4, active_port):
             updated_oc_server = cls.post_setup(nova_client, oc_server, oc_port)
+            if not updated_oc_server:
+                msg = "Server Error (OC Server - Setup Issue): Deleting %s" \
+                        % updated_oc_server.name
+                return cls.oc_server_recover(\
+                        msg, updated_oc_server, nova_client, network)
+
         # If for some reason network is not working even when active, try again
         else: 
-            msg = "Server Error (OC Server not routable): Deleting %s" \
+            msg = "Server Error (OC Server - Routing Issue): Deleting %s" \
                     % updated_oc_server.name
-            logger.error(msg)
-            oc_port = 443
             return cls.oc_server_recover(\
-                    updated_oc_server, oc_port, nova_client, network)
+                    msg, updated_oc_server, nova_client, network)
         
         return updated_oc_server
 #-------------------------------------------------------------------------------
@@ -329,7 +335,8 @@ class CloudServers():
                                     cls.post_setup(nova_client, oc_agent)
                             updated_oc_agents.append(updated_oc_agent)
                         else:
-                            msg = "Server Error (OC Agent Boot): Deleting %s" \
+                            msg = "Server Error (OC Agent - " + \
+                                    "Booting Issue): Deleting %s" \
                                     % oc_agent.name
                             logger.error(msg)
                             cls.delete_server(oc_agent)
@@ -340,8 +347,8 @@ class CloudServers():
                 elif status == False:
                     sleep(10)
                 elif status is None:
-                    msg = "Server Error (OC Agent not routable): Deleting %s" \
-                            % oc_agent.name
+                    msg = "Server Error (OC Agent - " + \
+                            "Routing Issue): Deleting %s" % oc_agent.name
                     logger.error(msg)
                     cls.delete_server(oc_agent)
                     sleep(10)
@@ -387,9 +394,8 @@ class CloudServers():
         oc_server = cls.launch_oc_server(nova_client, network)
 
         # Wait for OpenCenter server HTTPS server to be up
-        oc_port = 443
         updated_oc_server = \
-                cls.wait_for_oc_server(nova_client, oc_server, network, oc_port)
+                cls.wait_for_oc_server(nova_client, oc_server, network)
 
         # Create opencenter agents
         oc_agents = cls.launch_oc_agents(\
